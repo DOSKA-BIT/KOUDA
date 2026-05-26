@@ -32,7 +32,7 @@ object SourceQuery {
 
             val addr = InetAddress.getByName(ip)
             val socket = DatagramSocket()
-            socket.soTimeout = 1500
+            socket.soTimeout = 2000
 
             val startTime = System.currentTimeMillis()
             socket.send(DatagramPacket(QUERY_INFO, QUERY_INFO.size, addr, port))
@@ -46,7 +46,7 @@ object SourceQuery {
             val info = parseInfoResponse(data, ip, address, ping)
 
             val country = fetchCountry(ip)
-            val playerList = if (getPlayers) queryPlayers(socket, addr, port) else emptyList()
+            val playerList = if (getPlayers) queryPlayersWithRetry(addr, port) else emptyList()
             socket.close()
 
             info?.copy(country = country) to playerList
@@ -119,25 +119,47 @@ object SourceQuery {
         }
     }
 
-    private fun queryPlayers(socket: DatagramSocket, addr: InetAddress, port: Int): List<PlayerInfo> {
+    // Reintenta hasta 3 veces con distintos timeouts
+    private fun queryPlayersWithRetry(addr: InetAddress, port: Int): List<PlayerInfo> {
+        val timeouts = listOf(2000, 3000, 4000)
+        for (timeout in timeouts) {
+            val result = tryQueryPlayers(addr, port, timeout)
+            if (result.isNotEmpty()) return result
+        }
+        return emptyList()
+    }
+
+    private fun tryQueryPlayers(addr: InetAddress, port: Int, timeoutMs: Int): List<PlayerInfo> {
+        val socket = DatagramSocket()
         return try {
-            socket.soTimeout = 2500
-            val challenge = byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x55, 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte())
-            socket.send(DatagramPacket(challenge, challenge.size, addr, port))
+            socket.soTimeout = timeoutMs
+
+            // Paso 1: pedir challenge
+            val challengeReq = byteArrayOf(
+                0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(),
+                0x55,
+                0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()
+            )
+            socket.send(DatagramPacket(challengeReq, challengeReq.size, addr, port))
 
             val buf = ByteArray(4096)
             val resp = DatagramPacket(buf, buf.size)
             socket.receive(resp)
             var data = resp.data.copyOf(resp.length)
 
+            // Paso 2: si nos manda challenge (0x41), re-enviar con el numero correcto
             if (data.size >= 9 && data[4] == 0x41.toByte()) {
-                val challengeBytes = data.copyOfRange(5, 9)
-                val req = byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x55) + challengeBytes
-                socket.send(DatagramPacket(req, req.size, addr, port))
+                val challengeNum = data.copyOfRange(5, 9)
+                val realReq = byteArrayOf(
+                    0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(),
+                    0x55
+                ) + challengeNum
+                socket.send(DatagramPacket(realReq, realReq.size, addr, port))
                 socket.receive(resp)
                 data = resp.data.copyOf(resp.length)
             }
 
+            // Paso 3: parsear respuesta de jugadores (0x44)
             if (data.size < 6 || data[4] != 0x44.toByte()) return emptyList()
 
             val players = mutableListOf<PlayerInfo>()
@@ -147,18 +169,23 @@ object SourceQuery {
 
             repeat(numPlayers) {
                 if (ptr >= data.size) return@repeat
-                ptr++
+                ptr++ // skip index byte
                 val nameEnd = data.indexOf(0, ptr)
                 if (nameEnd == -1 || nameEnd + 8 > data.size) return@repeat
                 val pName = String(data, ptr, nameEnd - ptr, Charsets.UTF_8).trim()
-                val score = ByteBuffer.wrap(data, nameEnd + 1, 4).order(ByteOrder.LITTLE_ENDIAN).int
+                val score = ByteBuffer.wrap(data, nameEnd + 1, 4)
+                    .order(ByteOrder.LITTLE_ENDIAN).int
                 ptr = nameEnd + 9
-                if (pName.isNotBlank()) players.add(PlayerInfo(pName, score))
+                if (pName.isNotBlank()) {
+                    players.add(PlayerInfo(pName, score))
+                }
             }
 
             players.sortedByDescending { it.score }
         } catch (e: Exception) {
             emptyList()
+        } finally {
+            socket.close()
         }
     }
 
