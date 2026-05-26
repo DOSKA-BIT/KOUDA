@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -48,11 +49,19 @@ import kotlin.math.sin
 fun MenuScreen(onEnter: () -> Unit) {
     val infiniteTransition = rememberInfiniteTransition(label = "menu_anim")
 
+    // Rotating glow angle
     val glowAngle by infiniteTransition.animateFloat(
         initialValue = 0f, targetValue = 360f,
         animationSpec = infiniteRepeatable(tween(8000, easing = LinearEasing)),
         label = "glow"
     )
+    // Pulse for the button
+    val pulse by infiniteTransition.animateFloat(
+        initialValue = 0.85f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "pulse"
+    )
+    // Scanline offset
     val scanY by infiniteTransition.animateFloat(
         initialValue = 0f, targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(3000, easing = LinearEasing)),
@@ -64,6 +73,7 @@ fun MenuScreen(onEnter: () -> Unit) {
             .fillMaxSize()
             .background(BgDark)
             .drawBehind {
+                // Animated corner glow
                 val rad = Math.toRadians(glowAngle.toDouble())
                 val cx = size.width / 2 + cos(rad).toFloat() * size.width * 0.4f
                 val cy = size.height / 2 + sin(rad).toFloat() * size.height * 0.3f
@@ -76,6 +86,7 @@ fun MenuScreen(onEnter: () -> Unit) {
                     radius = size.width * 0.6f,
                     center = Offset(cx, cy)
                 )
+                // Subtle scanline
                 val lineY = scanY * size.height
                 drawLine(
                     color = NeonOrange.copy(alpha = 0.04f),
@@ -86,6 +97,7 @@ fun MenuScreen(onEnter: () -> Unit) {
             },
         contentAlignment = Alignment.Center
     ) {
+        // Grid dots in background
         GridDots()
 
         Column(
@@ -93,6 +105,7 @@ fun MenuScreen(onEnter: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(0.dp),
             modifier = Modifier.padding(horizontal = 40.dp)
         ) {
+            // Badge
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
@@ -112,6 +125,7 @@ fun MenuScreen(onEnter: () -> Unit) {
 
             Spacer(Modifier.height(20.dp))
 
+            // Main title
             Text(
                 text = "KOUDA",
                 color = Color.White,
@@ -130,6 +144,7 @@ fun MenuScreen(onEnter: () -> Unit) {
 
             Spacer(Modifier.height(48.dp))
 
+            // Stats row
             Row(
                 horizontalArrangement = Arrangement.spacedBy(32.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -142,6 +157,7 @@ fun MenuScreen(onEnter: () -> Unit) {
 
             Spacer(Modifier.height(48.dp))
 
+            // Launch button
             Button(
                 onClick = onEnter,
                 modifier = Modifier
@@ -177,18 +193,9 @@ fun MenuScreen(onEnter: () -> Unit) {
 
 @Composable
 fun StatBadge(label: String, icon: String) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(icon, color = NeonOrange, fontSize = 12.sp)
-        Text(
-            label,
-            color = TextMid,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Medium,
-            letterSpacing = 1.sp
-        )
+        Text(label, color = TextMid, fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.sp)
     }
 }
 
@@ -200,22 +207,19 @@ fun GridDots() {
         animationSpec = infiniteRepeatable(tween(2000), RepeatMode.Reverse),
         label = "dotAlpha"
     )
-    Box(modifier = Modifier
-        .fillMaxSize()
-        .drawBehind {
-            val spacing = 36.dp.toPx()
-            val dotR = 1.5f
-            var x = spacing / 2
-            while (x < size.width) {
-                var y = spacing / 2
-                while (y < size.height) {
-                    drawCircle(NeonOrange.copy(alpha = alpha), dotR, Offset(x, y))
-                    y += spacing
-                }
-                x += spacing
+    Box(modifier = Modifier.fillMaxSize().drawBehind {
+        val spacing = 36.dp.toPx()
+        val dotR = 1.5f
+        var x = spacing / 2
+        while (x < size.width) {
+            var y = spacing / 2
+            while (y < size.height) {
+                drawCircle(NeonOrange.copy(alpha = alpha), dotR, Offset(x, y))
+                y += spacing
             }
+            x += spacing
         }
-    )
+    })
 }
 
 // ─── SERVER LIST SCREEN ───────────────────────────────────────────────────────
@@ -234,6 +238,7 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
     var showSortMenu by remember { mutableStateOf(false) }
     var copiedIp by remember { mutableStateOf<String?>(null) }
 
+    // Auto-clear copy toast
     LaunchedEffect(copiedIp) {
         if (copiedIp != null) {
             kotlinx.coroutines.delay(2000)
@@ -241,16 +246,14 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
         }
     }
 
+    // Slot alert
     if (state.slotAlert != null) {
         AlertDialog(
             onDismissRequest = viewModel::clearAlert,
             containerColor = CardBg,
             shape = RoundedCornerShape(16.dp),
             title = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = NeonOrange)
                     Text("¡SLOT LIBRE!", color = NeonOrange, fontWeight = FontWeight.ExtraBold)
                 }
@@ -262,16 +265,14 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
                 )
             },
             confirmButton = {
-                Button(
-                    onClick = viewModel::clearAlert,
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonOrange)
-                ) {
+                Button(onClick = viewModel::clearAlert, colors = ButtonDefaults.buttonColors(containerColor = NeonOrange)) {
                     Text("ENTENDIDO", color = Color.Black, fontWeight = FontWeight.Bold)
                 }
             }
         )
     }
 
+    // Server options
     selectedServer?.let { server ->
         ServerOptionsDialog(
             server = server,
@@ -282,6 +283,7 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
         )
     }
 
+    // Player scan result
     if (state.isScanning || state.scanResult != null) {
         PlayerScanDialog(
             isLoading = state.isScanning,
@@ -290,6 +292,7 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
         )
     }
 
+    // Add server
     if (showAddDialog) {
         AddServerDialog(
             onAdd = { ip -> viewModel.addServer(ip); showAddDialog = false },
@@ -324,21 +327,14 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = BgDark),
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
-                                tint = TextMid
-                            )
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextMid)
                         }
                     },
                     actions = {
+                        // Sort dropdown
                         Box {
                             IconButton(onClick = { showSortMenu = true }) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.Sort,
-                                    contentDescription = "Sort",
-                                    tint = TextMid
-                                )
+                                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort", tint = TextMid)
                             }
                             DropdownMenu(
                                 expanded = showSortMenu,
@@ -356,17 +352,9 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
                                         },
                                         leadingIcon = {
                                             if (state.sortMode == mode)
-                                                Icon(
-                                                    Icons.Default.Check,
-                                                    null,
-                                                    tint = NeonOrange,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
+                                                Icon(Icons.Default.Check, null, tint = NeonOrange, modifier = Modifier.size(16.dp))
                                         },
-                                        onClick = {
-                                            viewModel.setSortMode(mode)
-                                            showSortMenu = false
-                                        }
+                                        onClick = { viewModel.setSortMode(mode); showSortMenu = false }
                                     )
                                 }
                             }
@@ -376,16 +364,10 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
                         }
                     }
                 )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(Color.Transparent, NeonOrange.copy(0.5f), Color.Transparent)
-                            )
-                        )
-                )
+                // Divider with orange glow
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(
+                    Brush.horizontalGradient(listOf(Color.Transparent, NeonOrange.copy(0.5f), Color.Transparent))
+                ))
             }
         },
         floatingActionButton = {
@@ -400,39 +382,24 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
 
-            GameFilterRow(
-                currentFilter = state.currentFilter,
-                onFilterSelected = viewModel::setFilter
-            )
+            // Game filter chips
+            GameFilterRow(currentFilter = state.currentFilter, onFilterSelected = viewModel::setFilter)
 
+            // Watching banner
             AnimatedVisibility(visible = state.watchingIp != null) {
-                WatchingBanner(
-                    ip = state.watchingIp ?: "",
-                    onCancel = viewModel::cancelWatch
-                )
+                WatchingBanner(ip = state.watchingIp ?: "", onCancel = viewModel::cancelWatch)
             }
 
+            // Copy toast
             AnimatedVisibility(visible = copiedIp != null) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(NeonOrange.copy(0.15f))
+                    modifier = Modifier.fillMaxWidth().background(NeonOrange.copy(0.15f))
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        Icons.Default.ContentCopy,
-                        null,
-                        tint = NeonOrange,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        "Copiado: ${copiedIp}",
-                        color = NeonOrange,
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
+                    Icon(Icons.Default.ContentCopy, null, tint = NeonOrange, modifier = Modifier.size(14.dp))
+                    Text("Copiado: ${copiedIp}", color = NeonOrange, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 }
             }
 
@@ -521,4 +488,384 @@ fun AnimatedServerCard(
     }
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(300)) + slid
+        enter = fadeIn(tween(300)) + slideInVertically(tween(300)) { it / 3 }
+    ) {
+        ServerCard(server = server, onClick = onClick, onFavToggle = onFavToggle, onLongPress = onLongPress)
+    }
+}
+
+@Composable
+fun ServerCard(
+    server: ServerInfo,
+    onClick: () -> Unit,
+    onFavToggle: () -> Unit,
+    onLongPress: () -> Unit
+) {
+    val fillColor = fillColor(server.fillRatio)
+    val pingColor = pingColor(server.ping)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onClick() }, onLongPress = { onLongPress() })
+            },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        border = if (server.isFav) BorderStroke(1.dp, NeonOrange.copy(0.35f)) else BorderStroke(1.dp, CardBorder),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.padding(start = 14.dp, end = 8.dp, top = 12.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Left block
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    // Name + country
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        // Country pill
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(NeonOrange.copy(0.15f))
+                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                        ) {
+                            Text(server.country, color = NeonOrange, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+                        }
+                        Text(
+                            server.name,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    // Map + IP
+                    Text(
+                        "${server.map}  ·  ${server.ip}",
+                        color = TextDim,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                // Right block
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    // Players
+                    Text(
+                        server.players,
+                        color = if (server.isFull) FillFull else Color.White,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    // Ping with color
+                    Text(
+                        server.pingStr,
+                        color = pingColor,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                    // Fav star
+                    IconButton(onClick = onFavToggle, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            imageVector = if (server.isFav) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = null,
+                            tint = if (server.isFav) Color(0xFFFFCC00) else TextDim,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+
+            // Player fill bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(CardBorder)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fraction = server.fillRatio.coerceIn(0f, 1f))
+                        .fillMaxHeight()
+                        .background(
+                            Brush.horizontalGradient(listOf(fillColor.copy(0.5f), fillColor))
+                        )
+                )
+            }
+        }
+    }
+}
+
+// ─── DIALOGS ─────────────────────────────────────────────────────────────────
+
+@Composable
+fun ServerOptionsDialog(
+    server: ServerInfo,
+    onScan: () -> Unit,
+    onWatch: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardBg,
+        shape = RoundedCornerShape(16.dp),
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(server.name, color = Color.White, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(server.ip, color = TextDim, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Stats row
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(BgDark)
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    StatItem("JUGADORES", server.players, NeonOrange)
+                    StatItem("PING", server.pingStr, pingColor(server.ping))
+                    StatItem("MAPA", server.map, TextMid)
+                }
+
+                Button(
+                    onClick = onScan, modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.PersonSearch, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("ESCANEAR JUGADORES", color = Color.Black, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                }
+
+                if (server.isFull) {
+                    Button(
+                        onClick = onWatch, modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFCC0000)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.Visibility, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("VIGILAR SLOT LIBRE", color = Color.White, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = onDelete, modifier = Modifier.fillMaxWidth(),
+                    border = BorderStroke(1.dp, Color(0xFF440000)),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF4444))
+                ) {
+                    Icon(Icons.Default.DeleteOutline, null, tint = Color(0xFFFF4444), modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Eliminar servidor", fontWeight = FontWeight.Medium)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar", color = TextDim) }
+        }
+    )
+}
+
+@Composable
+fun StatItem(label: String, value: String, valueColor: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, color = TextDim, fontSize = 9.sp, letterSpacing = 1.sp, fontFamily = FontFamily.Monospace)
+        Text(value, color = valueColor, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+    }
+}
+
+@Composable
+fun PlayerScanDialog(isLoading: Boolean, players: List<PlayerInfo>, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = { if (!isLoading) onDismiss() },
+        containerColor = CardBg,
+        shape = RoundedCornerShape(16.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.PersonSearch, null, tint = NeonOrange, modifier = Modifier.size(20.dp))
+                Text("OPERATIVOS", color = NeonOrange, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                if (!isLoading && players.isNotEmpty()) {
+                    Spacer(Modifier.weight(1f))
+                    Box(modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(NeonOrange.copy(0.2f)).padding(horizontal = 6.dp, vertical = 2.dp)) {
+                        Text("${players.size}", color = NeonOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+        },
+        text = {
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        CircularProgressIndicator(color = NeonOrange, strokeWidth = 2.dp)
+                        Text("Interceptando señal...", color = TextDim, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            } else if (players.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
+                    Text("Servidor vacío o firewall activo.", color = TextDim, textAlign = TextAlign.Center, fontSize = 13.sp)
+                }
+            } else {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.heightIn(max = 340.dp).verticalScroll(rememberScrollState())
+                ) {
+                    players.forEachIndexed { i, player ->
+                        val isTop = i == 0
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(7.dp))
+                                .background(if (isTop) NeonOrange.copy(0.1f) else BgDark)
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                "${i + 1}",
+                                color = if (isTop) NeonOrange else TextDim,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.width(18.dp)
+                            )
+                            if (isTop) Icon(Icons.Default.EmojiEvents, null, tint = NeonOrange, modifier = Modifier.size(14.dp))
+                            else Icon(Icons.Default.Person, null, tint = TextDim, modifier = Modifier.size(14.dp))
+                            Text(
+                                player.name, color = if (isTop) Color.White else Color(0xFFCCCCCC),
+                                fontWeight = if (isTop) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp
+                            )
+                            Text(
+                                "${player.score}",
+                                color = if (isTop) NeonOrange else TextMid,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (!isLoading) {
+                TextButton(onClick = onDismiss) { Text("CERRAR", color = NeonOrange, fontWeight = FontWeight.Bold) }
+            }
+        }
+    )
+}
+
+@Composable
+fun AddServerDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
+    var ip by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardBg,
+        shape = RoundedCornerShape(16.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.AddCircleOutline, null, tint = NeonOrange, modifier = Modifier.size(20.dp))
+                Text("AÑADIR SERVIDOR", color = Color.White, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Ingresá la IP y puerto del servidor:", color = TextMid, fontSize = 13.sp)
+                OutlinedTextField(
+                    value = ip,
+                    onValueChange = { ip = it; error = false },
+                    placeholder = { Text("45.235.98.50:27015", color = TextDim, fontFamily = FontFamily.Monospace, fontSize = 13.sp) },
+                    isError = error,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NeonOrange,
+                        unfocusedBorderColor = CardBorder,
+                        focusedLabelColor = NeonOrange,
+                        cursorColor = NeonOrange,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                )
+                if (error) {
+                    Text("⚠ Formato inválido. Usá IP:PUERTO", color = PingRed, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val t = ip.trim()
+                    if (Regex("""^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$""").matches(t)) onAdd(t) else error = true
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("VINCULAR", color = Color.Black, fontWeight = FontWeight.ExtraBold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar", color = TextDim) }
+        }
+    )
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+@Composable
+fun WatchingBanner(ip: String, onCancel: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().background(Color(0xFF1A0E00))
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        val pulse by rememberInfiniteTransition(label = "w").animateFloat(
+            initialValue = 0.4f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "wp"
+        )
+        Icon(Icons.Default.Visibility, null, tint = NeonOrange.copy(alpha = pulse), modifier = Modifier.size(14.dp))
+        Text("Vigilando: $ip", color = NeonOrange, fontSize = 12.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+        TextButton(onClick = onCancel, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+            Text("Cancelar", color = TextDim, fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+fun LoadingState() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            CircularProgressIndicator(color = NeonOrange, strokeWidth = 2.dp, strokeCap = StrokeCap.Round)
+            Text("Escaneando servidores...", color = TextDim, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+fun EmptyState() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Default.WifiOff, null, tint = TextDim, modifier = Modifier.size(48.dp))
+            Text("Sin servidores en radar", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text("Usá el botón + para agregar uno", color = TextDim, fontSize = 13.sp)
+        }
+    }
+}
