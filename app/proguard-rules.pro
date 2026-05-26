@@ -1,0 +1,2 @@
+-keep class com.kouda.tactical.data.** { *; }
+-keepattributes *Annotation*
