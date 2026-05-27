@@ -9,7 +9,8 @@ data class ServerInfo(
     val ip: String,
     val country: String,
     val folder: String,
-    var isFav: Boolean = false
+    var isFav: Boolean = false,
+    var autoWatch: Boolean = false
 ) {
     val players: String get() = "$curPlayers/$maxPlayers"
     val pingStr: String get() = "${ping}ms"
