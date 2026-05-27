@@ -59,18 +59,27 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isLoading = true, servers = emptyList(), totalOnline = 0) }
             val favs = loadFavs()
+            val autoWatched = loadAutoWatch()
             val servers = loadServers()
             val combined = (favs + servers.filter { it !in favs }).distinct()
 
             val results = combined.map { addr ->
                 async {
                     val (info, _) = SourceQuery.queryServer(addr)
-                    info?.copy(isFav = addr in favs)
+                    info?.copy(
+                        isFav = addr in favs,
+                        autoWatch = addr in autoWatched
+                    )
                 }
             }.awaitAll().filterNotNull()
 
             val total = results.sumOf { it.curPlayers }
             _state.update { it.copy(servers = results, isLoading = false, totalOnline = total) }
+
+            // Activar watchers para los servidores llenos con autoWatch
+            results.filter { it.autoWatch && it.isFull }.forEach { server ->
+                scheduleWatch(server.ip, server.name)
+            }
         }
     }
 
@@ -85,6 +94,30 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { s ->
             s.copy(servers = s.servers.map {
                 if (it.ip == ip) it.copy(isFav = !it.isFav) else it
+            })
+        }
+    }
+
+    fun toggleAutoWatch(ip: String) {
+        val autoWatched = loadAutoWatch().toMutableList()
+        val server = _state.value.servers.find { it.ip == ip } ?: return
+
+        if (ip in autoWatched) {
+            autoWatched.remove(ip)
+            // Cancelar el worker de este servidor
+            workManager.cancelUniqueWork("watch_$ip")
+        } else {
+            autoWatched.add(ip)
+            // Si el servidor está lleno, arrancar watcher ya
+            if (server.isFull) {
+                scheduleWatch(ip, server.name)
+            }
+        }
+
+        saveAutoWatch(autoWatched)
+        _state.update { s ->
+            s.copy(servers = s.servers.map {
+                if (it.ip == ip) it.copy(autoWatch = !it.autoWatch) else it
             })
         }
     }
@@ -105,7 +138,10 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
         val favs = loadFavs().toMutableList()
         favs.remove(ip)
         saveFavs(favs)
-        cancelWatch()
+        val autoWatched = loadAutoWatch().toMutableList()
+        autoWatched.remove(ip)
+        saveAutoWatch(autoWatched)
+        workManager.cancelUniqueWork("watch_$ip")
         _state.update { s -> s.copy(servers = s.servers.filter { it.ip != ip }) }
     }
 
@@ -119,12 +155,26 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearScanResult() = _state.update { it.copy(scanResult = null, isScanning = false) }
 
-    // ─── SLOT WATCHER con WorkManager ────────────────────────────────────────
+    // ─── Slot watcher manual (desde el banner) ────────────────────────────────
 
     fun watchSlot(ip: String, serverName: String) {
-        // Cancelar cualquier watcher anterior
-        workManager.cancelAllWorkByTag(SlotWorker.WORK_TAG)
+        scheduleWatch(ip, serverName)
+        _state.update { it.copy(watchingIp = ip, watchingName = serverName) }
+    }
 
+    fun cancelWatch() {
+        val ip = _state.value.watchingIp ?: return
+        // Solo cancelar si no tiene autoWatch activo
+        val server = _state.value.servers.find { it.ip == ip }
+        if (server?.autoWatch != true) {
+            workManager.cancelUniqueWork("watch_$ip")
+        }
+        _state.update { it.copy(watchingIp = null, watchingName = null) }
+    }
+
+    fun clearAlert() = _state.update { it.copy(slotAlert = null) }
+
+    private fun scheduleWatch(ip: String, serverName: String) {
         val inputData = Data.Builder()
             .putString(SlotWorker.KEY_IP, ip)
             .putString(SlotWorker.KEY_SERVER_NAME, serverName)
@@ -134,27 +184,20 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        // Chequea cada 30 segundos, con backoff exponencial si falla
         val workRequest = OneTimeWorkRequestBuilder<SlotWorker>()
             .setInputData(inputData)
             .setConstraints(constraints)
-            .setBackoffCriteria(
-                BackoffPolicy.LINEAR,
-                30, TimeUnit.SECONDS
-            )
+            .setBackoffCriteria(BackoffPolicy.LINEAR, 30, TimeUnit.SECONDS)
             .addTag(SlotWorker.WORK_TAG)
             .build()
 
-        workManager.enqueue(workRequest)
-        _state.update { it.copy(watchingIp = ip, watchingName = serverName) }
+        // Usar nombre único por IP para poder cancelar individualmente
+        workManager.enqueueUniqueWork(
+            "watch_$ip",
+            androidx.work.ExistingWorkPolicy.REPLACE,
+            workRequest
+        )
     }
-
-    fun cancelWatch() {
-        workManager.cancelAllWorkByTag(SlotWorker.WORK_TAG)
-        _state.update { it.copy(watchingIp = null, watchingName = null) }
-    }
-
-    fun clearAlert() = _state.update { it.copy(slotAlert = null) }
 
     fun filteredAndSorted(): List<ServerInfo> {
         val s = _state.value
@@ -170,16 +213,26 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ─── Persistencia ─────────────────────────────────────────────────────────
+
     private fun loadServers(): List<String> {
         val json = prefs.getString("servers", null) ?: return defaultServers
         return gson.fromJson(json, object : TypeToken<List<String>>() {}.type)
     }
     private fun saveServers(list: List<String>) =
         prefs.edit().putString("servers", gson.toJson(list)).apply()
+
     private fun loadFavs(): List<String> {
         val json = prefs.getString("favs", null) ?: return emptyList()
         return gson.fromJson(json, object : TypeToken<List<String>>() {}.type)
     }
     private fun saveFavs(list: List<String>) =
         prefs.edit().putString("favs", gson.toJson(list)).apply()
+
+    private fun loadAutoWatch(): List<String> {
+        val json = prefs.getString("auto_watch", null) ?: return emptyList()
+        return gson.fromJson(json, object : TypeToken<List<String>>() {}.type)
+    }
+    private fun saveAutoWatch(list: List<String>) =
+        prefs.edit().putString("auto_watch", gson.toJson(list)).apply()
 }
