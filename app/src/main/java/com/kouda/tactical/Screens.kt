@@ -274,28 +274,33 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
         )
     }
 
-    // Server options
-    selectedServer?.let { server ->
-    ServerOptionsDialog(
-    server = server,
-    onScan = {
-        selectedServer = null
-        viewModel.scanPlayers(server.ip)
-    },
-    onWatch = {
-        selectedServer = null
-        viewModel.watchSlot(server.ip, server.name)
-    },
-    onToggleAutoWatch = {
-        viewModel.toggleAutoWatch(server.ip)
-    },
-    onDelete = {
-        selectedServer = null
-        viewModel.removeServer(server.ip)
-    },
-    onDismiss = { selectedServer = null }
-)
+    /// Server options
+if (selectedServer != null) {
+    val selectedIp = selectedServer!!.ip
+    val liveServer = servers.find { it.ip == selectedIp } ?: state.servers.find { it.ip == selectedIp }
+    if (liveServer != null) {
+        ServerOptionsDialog(
+            server = liveServer,
+            onScan = {
+                selectedServer = null
+                viewModel.scanPlayers(selectedIp)
+            },
+            onWatch = {
+                selectedServer = null
+                viewModel.watchSlot(selectedIp, liveServer.name)
+            },
+            onToggleAutoWatch = {
+                viewModel.toggleAutoWatch(selectedIp)
+            },
+            onDelete = {
+                selectedServer = null
+                viewModel.removeServer(selectedIp)
+            },
+            onDismiss = { selectedServer = null }
+        )
     }
+}
+    
 
     // Player scan result
     if (state.isScanning || state.scanResult != null) {
