@@ -54,4 +54,5 @@ dependencies {
     implementation(libs.coil.compose)
     implementation("androidx.appcompat:appcompat:1.7.0")
     debugImplementation(libs.androidx.ui.tooling)
+    implementation(libs.androidx.work.runtime)
 }
