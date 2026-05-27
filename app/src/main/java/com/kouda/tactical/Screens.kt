@@ -626,6 +626,7 @@ fun ServerOptionsDialog(
     server: ServerInfo,
     onScan: () -> Unit,
     onWatch: () -> Unit,
+    onToggleAutoWatch: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -635,15 +636,28 @@ fun ServerOptionsDialog(
         shape = RoundedCornerShape(16.dp),
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(server.name, color = Color.White, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(server.ip, color = TextDim, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                Text(
+                    text = server.name,
+                    color = Color.White,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = server.ip,
+                    color = TextDim,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace
+                )
             }
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Stats row
+
+                // Stats
                 Row(
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(BgDark)
                         .padding(12.dp),
@@ -654,46 +668,106 @@ fun ServerOptionsDialog(
                     StatItem("MAPA", server.map, TextMid)
                 }
 
+                // Escanear jugadores
                 Button(
-                    onClick = onScan, modifier = Modifier.fillMaxWidth(),
+                    onClick = onScan,
+                    modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Icon(Icons.Default.PersonSearch, null, tint = Color.Black, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text("ESCANEAR JUGADORES", color = Color.Black, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
                 }
 
+                // Vigilar slot manual (solo si está lleno)
                 if (server.isFull) {
                     Button(
-                        onClick = onWatch, modifier = Modifier.fillMaxWidth(),
+                        onClick = onWatch,
+                        modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFCC0000)),
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Icon(Icons.Default.Visibility, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("VIGILAR SLOT LIBRE", color = Color.White, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("VIGILAR SLOT AHORA", color = Color.White, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
                     }
                 }
 
+                // Toggle vigilancia automática
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (server.autoWatch) NeonOrange.copy(0.1f) else BgDark
+                        )
+                        .border(
+                            1.dp,
+                            if (server.autoWatch) NeonOrange.copy(0.4f) else CardBorder,
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.NotificationsActive,
+                        contentDescription = null,
+                        tint = if (server.autoWatch) NeonOrange else TextDim,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Vigilancia automatica",
+                            color = if (server.autoWatch) Color.White else TextMid,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = if (server.autoWatch)
+                                "Activa — te notifica cuando haya slot"
+                            else
+                                "Inactiva — no te notifica",
+                            color = if (server.autoWatch) NeonOrange else TextDim,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Switch(
+                        checked = server.autoWatch,
+                        onCheckedChange = { onToggleAutoWatch() },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = NeonOrange,
+                            uncheckedThumbColor = TextDim,
+                            uncheckedTrackColor = CardBorder
+                        )
+                    )
+                }
+
+                // Eliminar
                 OutlinedButton(
-                    onClick = onDelete, modifier = Modifier.fillMaxWidth(),
+                    onClick = onDelete,
+                    modifier = Modifier.fillMaxWidth(),
                     border = BorderStroke(1.dp, Color(0xFF440000)),
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF4444))
                 ) {
                     Icon(Icons.Default.DeleteOutline, null, tint = Color(0xFFFF4444), modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text("Eliminar servidor", fontWeight = FontWeight.Medium)
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar", color = TextDim) }
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = TextDim)
+            }
         }
     )
 }
-
+ 
 @Composable
 fun StatItem(label: String, value: String, valueColor: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
