@@ -4,6 +4,12 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.Data
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.kouda.tactical.data.GameFilter
@@ -14,13 +20,12 @@ import com.kouda.tactical.network.SourceQuery
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 
 data class UiState(
     val servers: List<ServerInfo> = emptyList(),
@@ -28,6 +33,7 @@ data class UiState(
     val currentFilter: GameFilter = GameFilter.ALL,
     val sortMode: SortMode = SortMode.FAVORITES,
     val watchingIp: String? = null,
+    val watchingName: String? = null,
     val slotAlert: String? = null,
     val scanResult: List<PlayerInfo>? = null,
     val isScanning: Boolean = false,
@@ -38,6 +44,7 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
 
     private val gson = Gson()
     private val prefs = application.getSharedPreferences("kouda_prefs", Context.MODE_PRIVATE)
+    private val workManager = WorkManager.getInstance(application)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -46,7 +53,6 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         refresh()
-        startWatchdog()
     }
 
     fun refresh() {
@@ -77,7 +83,9 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
         if (ip in favs) favs.remove(ip) else favs.add(ip)
         saveFavs(favs)
         _state.update { s ->
-            s.copy(servers = s.servers.map { if (it.ip == ip) it.copy(isFav = !it.isFav) else it })
+            s.copy(servers = s.servers.map {
+                if (it.ip == ip) it.copy(isFav = !it.isFav) else it
+            })
         }
     }
 
@@ -97,6 +105,7 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
         val favs = loadFavs().toMutableList()
         favs.remove(ip)
         saveFavs(favs)
+        cancelWatch()
         _state.update { s -> s.copy(servers = s.servers.filter { it.ip != ip }) }
     }
 
@@ -110,34 +119,54 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearScanResult() = _state.update { it.copy(scanResult = null, isScanning = false) }
 
-    fun watchSlot(ip: String) = _state.update { it.copy(watchingIp = ip) }
+    // ─── SLOT WATCHER con WorkManager ────────────────────────────────────────
 
-    fun cancelWatch() = _state.update { it.copy(watchingIp = null) }
+    fun watchSlot(ip: String, serverName: String) {
+        // Cancelar cualquier watcher anterior
+        workManager.cancelAllWorkByTag(SlotWorker.WORK_TAG)
+
+        val inputData = Data.Builder()
+            .putString(SlotWorker.KEY_IP, ip)
+            .putString(SlotWorker.KEY_SERVER_NAME, serverName)
+            .build()
+
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        // Chequea cada 30 segundos, con backoff exponencial si falla
+        val workRequest = OneTimeWorkRequestBuilder<SlotWorker>()
+            .setInputData(inputData)
+            .setConstraints(constraints)
+            .setBackoffCriteria(
+                BackoffPolicy.LINEAR,
+                30, TimeUnit.SECONDS
+            )
+            .addTag(SlotWorker.WORK_TAG)
+            .build()
+
+        workManager.enqueue(workRequest)
+        _state.update { it.copy(watchingIp = ip, watchingName = serverName) }
+    }
+
+    fun cancelWatch() {
+        workManager.cancelAllWorkByTag(SlotWorker.WORK_TAG)
+        _state.update { it.copy(watchingIp = null, watchingName = null) }
+    }
 
     fun clearAlert() = _state.update { it.copy(slotAlert = null) }
-
-    private fun startWatchdog() {
-        viewModelScope.launch(Dispatchers.IO) {
-            while (isActive) {
-                delay(20_000)
-                val watchIp = _state.value.watchingIp ?: continue
-                val (info, _) = SourceQuery.queryServer(watchIp)
-                if (info != null && info.curPlayers < info.maxPlayers) {
-                    _state.update { it.copy(slotAlert = info.name, watchingIp = null) }
-                }
-            }
-        }
-    }
 
     fun filteredAndSorted(): List<ServerInfo> {
         val s = _state.value
         val filtered = if (s.currentFilter == GameFilter.ALL) s.servers
-                       else s.servers.filter { it.folder == s.currentFilter.tag }
+        else s.servers.filter { it.folder == s.currentFilter.tag }
         return when (s.sortMode) {
-            SortMode.PING      -> filtered.sortedBy { it.ping }
-            SortMode.PLAYERS   -> filtered.sortedByDescending { it.curPlayers }
-            SortMode.NAME      -> filtered.sortedBy { it.name.lowercase() }
-            SortMode.FAVORITES -> filtered.sortedWith(compareByDescending<ServerInfo> { it.isFav }.thenBy { it.ping })
+            SortMode.PING -> filtered.sortedBy { it.ping }
+            SortMode.PLAYERS -> filtered.sortedByDescending { it.curPlayers }
+            SortMode.NAME -> filtered.sortedBy { it.name.lowercase() }
+            SortMode.FAVORITES -> filtered.sortedWith(
+                compareByDescending<ServerInfo> { it.isFav }.thenBy { it.ping }
+            )
         }
     }
 
@@ -145,10 +174,12 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
         val json = prefs.getString("servers", null) ?: return defaultServers
         return gson.fromJson(json, object : TypeToken<List<String>>() {}.type)
     }
-    private fun saveServers(list: List<String>) = prefs.edit().putString("servers", gson.toJson(list)).apply()
+    private fun saveServers(list: List<String>) =
+        prefs.edit().putString("servers", gson.toJson(list)).apply()
     private fun loadFavs(): List<String> {
         val json = prefs.getString("favs", null) ?: return emptyList()
         return gson.fromJson(json, object : TypeToken<List<String>>() {}.type)
     }
-    private fun saveFavs(list: List<String>) = prefs.edit().putString("favs", gson.toJson(list)).apply()
+    private fun saveFavs(list: List<String>) =
+        prefs.edit().putString("favs", gson.toJson(list)).apply()
 }
