@@ -61,6 +61,8 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
+            // Actualizar cache del widget
+            WidgetRefreshCallback.refreshWidgetData(getApplication())
             _state.update { it.copy(isLoading = true, servers = emptyList(), totalOnline = 0) }
             val favs = loadFavs()
             val autoWatched = loadAutoWatch()
