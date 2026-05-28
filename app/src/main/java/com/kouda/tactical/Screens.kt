@@ -647,13 +647,13 @@ fun ServerCard(
 }
 
 // ─── DIALOGS ─────────────────────────────────────────────────────────────────
-
 @Composable
 fun ServerOptionsDialog(
     server: ServerInfo,
     onScan: () -> Unit,
     onWatch: () -> Unit,
     onToggleAutoWatch: () -> Unit,
+    onShare: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -702,9 +702,41 @@ fun ServerOptionsDialog(
                     colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Icon(Icons.Default.PersonSearch, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.Default.PersonSearch,
+                        null,
+                        tint = Color.Black,
+                        modifier = Modifier.size(18.dp)
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("ESCANEAR JUGADORES", color = Color.Black, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                    Text(
+                        "ESCANEAR JUGADORES",
+                        color = Color.Black,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp
+                    )
+                }
+
+                // Compartir
+                Button(
+                    onClick = onShare,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A6B2A)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Share,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "COMPARTIR SERVIDOR",
+                        color = Color.White,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp
+                    )
                 }
 
                 // Vigilar slot manual (solo si está lleno)
@@ -715,9 +747,19 @@ fun ServerOptionsDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFCC0000)),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Icon(Icons.Default.Visibility, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Icon(
+                            Icons.Default.Visibility,
+                            null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("VIGILAR SLOT AHORA", color = Color.White, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                        Text(
+                            "VIGILAR SLOT AHORA",
+                            color = Color.White,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.sp
+                        )
                     }
                 }
 
@@ -779,9 +821,16 @@ fun ServerOptionsDialog(
                     modifier = Modifier.fillMaxWidth(),
                     border = BorderStroke(1.dp, Color(0xFF440000)),
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF4444))
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color(0xFFFF4444)
+                    )
                 ) {
-                    Icon(Icons.Default.DeleteOutline, null, tint = Color(0xFFFF4444), modifier = Modifier.size(16.dp))
+                    Icon(
+                        Icons.Default.DeleteOutline,
+                        null,
+                        tint = Color(0xFFFF4444),
+                        modifier = Modifier.size(16.dp)
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Eliminar servidor", fontWeight = FontWeight.Medium)
                 }
@@ -794,7 +843,7 @@ fun ServerOptionsDialog(
         }
     )
 }
- 
+
 @Composable
 fun StatItem(label: String, value: String, valueColor: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
