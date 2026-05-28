@@ -1,5 +1,6 @@
 package com.kouda.tactical
 
+import androidx.compose.material.icons.filled.Share
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
