@@ -237,7 +237,9 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
         viewModel.filteredAndSorted()
     }
     val clipboard = LocalClipboardManager.current
-
+    
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
     var selectedServer by remember { mutableStateOf<ServerInfo?>(null) }
     var showSortMenu by remember { mutableStateOf(false) }
