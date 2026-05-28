@@ -283,24 +283,41 @@ if (selectedServer != null) {
     val liveServer = servers.find { it.ip == selectedIp } ?: state.servers.find { it.ip == selectedIp }
     if (liveServer != null) {
         ServerOptionsDialog(
-            server = liveServer,
-            onScan = {
-                selectedServer = null
-                viewModel.scanPlayers(selectedIp)
-            },
-            onWatch = {
-                selectedServer = null
-                viewModel.watchSlot(selectedIp, liveServer.name)
-            },
-            onToggleAutoWatch = {
-                viewModel.toggleAutoWatch(selectedIp)
-            },
-            onDelete = {
-                selectedServer = null
-                viewModel.removeServer(selectedIp)
-            },
-            onDismiss = { selectedServer = null }
-        )
+    server = liveServer,
+    onScan = {
+        selectedServer = null
+        viewModel.scanPlayers(selectedIp)
+    },
+    onWatch = {
+        selectedServer = null
+        viewModel.watchSlot(selectedIp, liveServer.name)
+    },
+    onToggleAutoWatch = {
+        viewModel.toggleAutoWatch(selectedIp)
+    },
+    onShare = {
+        val text = """
+🎮 *${liveServer.name}*
+🗺 Mapa: ${liveServer.map}
+👥 Jugadores: ${liveServer.players}
+📡 Ping: ${liveServer.pingStr}
+🌍 País: ${liveServer.country}
+🔗 IP: `${liveServer.ip}`
+
+_Conectate desde Kouda Tactical_
+        """.trimIndent()
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(intent, "Compartir servidor"))
+    },
+    onDelete = {
+        selectedServer = null
+        viewModel.removeServer(selectedIp)
+    },
+    onDismiss = { selectedServer = null }
+)
     }
 }
     
