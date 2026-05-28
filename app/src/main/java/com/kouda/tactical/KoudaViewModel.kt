@@ -105,8 +105,8 @@ results.filter { it.autoWatch && it.isFull }.forEach { server ->
     scheduleWatch(server.ip, server.name)
 }
 
-// Actualizar cache del widget DESPUÉS de tener los datos
-WidgetRefreshCallback.refreshWidgetData(getApplication()){
+    val app = getApplication<android.app.Application>()
+    WidgetRefreshCallback.refreshWidgetData(app)
             
             }
         }
