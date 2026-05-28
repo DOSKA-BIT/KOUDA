@@ -1039,4 +1039,50 @@ fun EmptyState() {
             Text("Usá el botón + para agregar uno", color = TextDim, fontSize = 13.sp)
         }
     }
+    
+    @Composable
+fun HistoryItem(label: String, value: String) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = label,
+            color = TextDim,
+            fontSize = 8.sp,
+            letterSpacing = 1.sp,
+            fontFamily = FontFamily.Monospace
+        )
+        Text(
+            text = value,
+            color = NeonOrange,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.ExtraBold,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
+
+@Composable
+fun MiniBarChart(snapshots: List<com.kouda.tactical.data.ServerSnapshot>) {
+    val maxPlayers = snapshots.maxOfOrNull { it.maxPlayers }?.takeIf { it > 0 } ?: return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(32.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        snapshots.forEach { snap ->
+            val ratio = (snap.players.toFloat() / maxPlayers).coerceIn(0f, 1f)
+            val color = fillColor(snap.players.toFloat() / maxPlayers)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(fraction = ratio.coerceAtLeast(0.05f))
+                    .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+                    .background(color.copy(alpha = 0.8f))
+            )
+        }
+    }
 }
