@@ -77,13 +77,11 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }.awaitAll().filterNotNull()
 
-            // Guardar snapshot de cada servidor consultado
             val now = System.currentTimeMillis()
             val histories = loadAllHistories().toMutableMap()
             results.forEach { server ->
                 val snap = ServerSnapshot(now, server.curPlayers, server.maxPlayers)
                 val existing = histories[server.ip] ?: ServerHistory(server.ip)
-                // Mantener solo los ultimos 200 snapshots por servidor
                 val updated = existing.copy(
                     snapshots = (existing.snapshots + snap).takeLast(200)
                 )
@@ -91,24 +89,23 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
             }
             saveAllHistories(histories)
 
-             val total = results.sumOf { it.curPlayers }
-_state.update {
-    it.copy(
-        servers = results,
-        isLoading = false,
-        totalOnline = total,
-        histories = histories
-    )
-}
-
-results.filter { it.autoWatch && it.isFull }.forEach { server ->
-    scheduleWatch(server.ip, server.name)
-}
-
-    val app = getApplication<android.app.Application>()
-    WidgetRefreshCallback.refreshWidgetData(app)
-            
+            val total = results.sumOf { it.curPlayers }
+            _state.update {
+                it.copy(
+                    servers = results,
+                    isLoading = false,
+                    totalOnline = total,
+                    histories = histories
+                )
             }
+
+            results.filter { it.autoWatch && it.isFull }.forEach { server ->
+                scheduleWatch(server.ip, server.name)
+            }
+
+            // Actualizar cache del widget despues de tener los datos
+            val app = getApplication<Application>()
+            WidgetRefreshCallback.refreshWidgetData(app)
         }
     }
 
@@ -167,7 +164,6 @@ results.filter { it.autoWatch && it.isFull }.forEach { server ->
         autoWatched.remove(ip)
         saveAutoWatch(autoWatched)
         workManager.cancelUniqueWork("watch_$ip")
-        // Borrar historial del servidor eliminado
         val histories = loadAllHistories().toMutableMap()
         histories.remove(ip)
         saveAllHistories(histories)
@@ -234,8 +230,6 @@ results.filter { it.autoWatch && it.isFull }.forEach { server ->
         }
     }
 
-    // ─── Persistencia ─────────────────────────────────────────────────────────
-
     private fun loadServers(): List<String> {
         val json = prefs.getString("servers", null) ?: return defaultServers
         return gson.fromJson(json, object : TypeToken<List<String>>() {}.type)
@@ -261,9 +255,7 @@ results.filter { it.autoWatch && it.isFull }.forEach { server ->
         val json = prefs.getString("histories", null) ?: return emptyMap()
         return try {
             gson.fromJson(json, object : TypeToken<Map<String, ServerHistory>>() {}.type)
-        } catch (e: Exception) {
-            emptyMap()
-        }
+        } catch (e: Exception) { emptyMap() }
     }
     private fun saveAllHistories(map: Map<String, ServerHistory>) =
         prefs.edit().putString("histories", gson.toJson(map)).apply()
