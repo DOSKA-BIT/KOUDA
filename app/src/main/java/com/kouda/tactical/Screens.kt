@@ -689,18 +689,58 @@ fun ServerOptionsDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
 
                 // Stats
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(BgDark)
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    StatItem("JUGADORES", server.players, NeonOrange)
-                    StatItem("PING", server.pingStr, pingColor(server.ping))
-                    StatItem("MAPA", server.map, TextMid)
-                }
+Row(
+    modifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(8.dp))
+        .background(BgDark)
+        .padding(12.dp),
+    horizontalArrangement = Arrangement.SpaceEvenly
+) {
+    StatItem("JUGADORES", server.players, NeonOrange)
+    StatItem("PING", server.pingStr, pingColor(server.ping))
+    StatItem("MAPA", server.map, TextMid)
+}
+
+// Panel de historial
+if (history != null && history.totalChecks() >= 2) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(BgDark)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "HISTORIAL",
+            color = TextDim,
+            fontSize = 9.sp,
+            letterSpacing = 2.sp,
+            fontFamily = FontFamily.Monospace
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            HistoryItem(label = "CONSULTAS", value = "${history.totalChecks()}")
+            HistoryItem(label = "PROM 24HS", value = "${history.recentAverage()} jug")
+            HistoryItem(label = "HORA PICO", value = history.peakHour()?.let { "${it}:00hs" } ?: "---")
+        }
+        if (history.snapshots.size >= 4) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "ACTIVIDAD RECIENTE",
+                color = TextDim,
+                fontSize = 9.sp,
+                letterSpacing = 2.sp,
+                fontFamily = FontFamily.Monospace
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            MiniBarChart(snapshots = history.snapshots.takeLast(12))
+        }
+    }
+}
 
                 // Escanear jugadores
                 Button(
