@@ -650,6 +650,7 @@ fun ServerCard(
 @Composable
 fun ServerOptionsDialog(
     server: ServerInfo,
+    history: ServerHistory?,
     onScan: () -> Unit,
     onWatch: () -> Unit,
     onToggleAutoWatch: () -> Unit,
