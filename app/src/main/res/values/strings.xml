@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="widget_description">Muestra tus servidores favoritos en tiempo real</string>
     <string name="app_name">Kouda Tactical</string>
 </resources>
+
