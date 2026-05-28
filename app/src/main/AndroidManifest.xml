@@ -15,6 +15,16 @@
         android:theme="@style/Theme.KoudaTactical">
 
         <activity
+            <receiver
+    android:name=".KoudaWidgetReceiver"
+    android:exported="true">
+    <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+    </intent-filter>
+    <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/kouda_widget_info" />
+</receiver>
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="portrait"
