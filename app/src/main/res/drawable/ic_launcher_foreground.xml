@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Silueta del soldado CS estilo icono clasico -->
+    <!-- Cabeza -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,18 C50.5,18 47.5,21 47.5,24.5 C47.5,28 50.5,31 54,31 C57.5,31 60.5,28 60.5,24.5 C60.5,21 57.5,18 54,18 Z" />
+
+    <!-- Cuerpo inclinado hacia adelante -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M47,31 L38,34 L36,42 L42,43 L40,55 L50,56 L51,44 L57,43 L62,55 L70,52 L64,38 L60,34 Z" />
+
+    <!-- Brazo izquierdo extendido con arma -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,34 L24,38 L23,42 L22,42 L21,40 L18,41 L20,47 L24,46 L38,42 Z" />
+
+    <!-- Arma (rifle) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M18,41 L15,42 L15,44 L20,44 L20,47 L18,41 Z" />
+
+    <!-- Pierna izquierda -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,55 L36,72 L32,86 L39,87 L44,74 L47,87 L54,87 L50,56 Z" />
+
+    <!-- Pierna derecha -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M62,55 L66,70 L70,85 L63,86 L60,72 L57,86 L50,86 L50,56 Z" />
+
+    <!-- Brazo derecho hacia atras -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M60,34 L70,40 L68,44 L58,40 Z" />
+
+</vector>
