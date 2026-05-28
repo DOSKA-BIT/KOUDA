@@ -658,6 +658,12 @@ fun ServerOptionsDialog(
     onDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    ServerOptionsDialog(
+    server = liveServer,
+    history = viewModel.getHistory(selectedIp),
+    onScan = { ... },
+    // resto igual
+)
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CardBg,
