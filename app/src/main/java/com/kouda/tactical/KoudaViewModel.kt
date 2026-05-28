@@ -61,8 +61,6 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
-            // Actualizar cache del widget
-            WidgetRefreshCallback.refreshWidgetData(getApplication())
             _state.update { it.copy(isLoading = true, servers = emptyList(), totalOnline = 0) }
             val favs = loadFavs()
             val autoWatched = loadAutoWatch()
@@ -93,18 +91,23 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
             }
             saveAllHistories(histories)
 
-            val total = results.sumOf { it.curPlayers }
-            _state.update {
-                it.copy(
-                    servers = results,
-                    isLoading = false,
-                    totalOnline = total,
-                    histories = histories
-                )
-            }
+             val total = results.sumOf { it.curPlayers }
+_state.update {
+    it.copy(
+        servers = results,
+        isLoading = false,
+        totalOnline = total,
+        histories = histories
+    )
+}
 
-            results.filter { it.autoWatch && it.isFull }.forEach { server ->
-                scheduleWatch(server.ip, server.name)
+results.filter { it.autoWatch && it.isFull }.forEach { server ->
+    scheduleWatch(server.ip, server.name)
+}
+
+// Actualizar cache del widget DESPUÉS de tener los datos
+WidgetRefreshCallback.refreshWidgetData(getApplication()){
+            
             }
         }
     }
