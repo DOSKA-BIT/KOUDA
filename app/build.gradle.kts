@@ -55,4 +55,6 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     debugImplementation(libs.androidx.ui.tooling)
     implementation(libs.androidx.work.runtime)
+    implementation(libs.androidx.glance)
+    implementation(libs.androidx.glance.material3)
 }
