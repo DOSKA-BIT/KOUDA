@@ -44,12 +44,24 @@ object SourceQuery {
             val socket = DatagramSocket()
             socket.soTimeout = 2000
 
-            val startTime = System.currentTimeMillis()
-            socket.send(DatagramPacket(QUERY_INFO, QUERY_INFO.size, addr, port))
-            val buf = ByteArray(4096)
-            val response = DatagramPacket(buf, buf.size)
-            socket.receive(response)
-            val ping = (System.currentTimeMillis() - startTime).toInt()
+            // Tres mediciones para mayor precision
+val pingSamples = mutableListOf<Int>()
+var lastData = ByteArray(0)
+
+repeat(3) {
+    try {
+        val t0 = System.currentTimeMillis()
+        socket.send(DatagramPacket(QUERY_INFO, QUERY_INFO.size, addr, port))
+        val buf = ByteArray(4096)
+        val resp = DatagramPacket(buf, buf.size)
+        socket.receive(resp)
+        pingSamples.add((System.currentTimeMillis() - t0).toInt())
+        if (lastData.isEmpty()) lastData = resp.data.copyOf(resp.length)
+    } catch (e: Exception) { }
+}
+
+val ping = pingSamples.sorted().getOrElse(1) { pingSamples.firstOrNull() ?: 999 }
+val response = DatagramPacket(lastData, lastData.size)
 
             val data = response.data.copyOf(response.length)
             val info = parseInfoResponse(data, ip, address, ping)
