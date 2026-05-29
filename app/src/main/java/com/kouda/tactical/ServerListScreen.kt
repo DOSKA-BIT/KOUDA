@@ -308,8 +308,7 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
                         }
                     }
                 }
-                servers.isEmpty() && !state.isLoading -> EmptyState(
-    onDiscover = {
+                servers.isEmpty() && !state.isLoading -> EmptyState(onDiscover = { viewModel.discoverServers() })
         viewModelScope.launch {
             ServerDiscovery.discoverAndSave(context)
             viewModel.refresh()
