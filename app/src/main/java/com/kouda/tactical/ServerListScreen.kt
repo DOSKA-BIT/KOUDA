@@ -1,5 +1,11 @@
 package com.kouda.tactical
 
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import com.kouda.tactical.ui.theme.NeonOrange
+import com.kouda.tactical.ui.theme.TextDim
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
