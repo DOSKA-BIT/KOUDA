@@ -61,6 +61,7 @@ repeat(3) {
 }
 
 val ping = pingSamples.sorted().getOrElse(1) { pingSamples.firstOrNull() ?: 999 }
+val data = lastData
 val response = DatagramPacket(lastData, lastData.size)
 
             val data = response.data.copyOf(response.length)
