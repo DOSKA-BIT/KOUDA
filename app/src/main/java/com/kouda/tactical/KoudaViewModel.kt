@@ -1,5 +1,6 @@
 package com.kouda.tactical
 
+import com.kouda.tactical.network.ServerDiscovery
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
@@ -56,7 +57,15 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
     private val defaultServers = listOf("45.235.98.50:27015")
 
     init {
+    val app = getApplication<Application>()
+    if (ServerDiscovery.shouldDiscover(app)) {
+        viewModelScope.launch(Dispatchers.IO) {
+            ServerDiscovery.discoverAndSave(app)
+            refresh()
+        }
+    } else {
         refresh()
+    }
     }
 
     fun refresh() {
