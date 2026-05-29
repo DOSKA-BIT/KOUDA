@@ -1,5 +1,8 @@
 package com.kouda.tactical
 
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -124,15 +127,53 @@ fun LoadingState() {
 }
 
 @Composable
-fun EmptyState() {
+fun EmptyState(onDiscover: () -> Unit = {}) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(32.dp)
         ) {
             Icon(Icons.Default.WifiOff, null, tint = TextDim, modifier = Modifier.size(48.dp))
-            Text("Sin servidores en radar", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Text("Usa el boton + para agregar uno", color = TextDim, fontSize = 13.sp)
+            Text(
+                "Sin servidores en radar",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+            Text(
+                "No hay servidores guardados todavia.",
+                color = TextDim,
+                fontSize = 13.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Button(
+                onClick = onDiscover,
+                colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(
+                    Icons.Default.Search,
+                    null,
+                    tint = Color.Black,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "BUSCAR SERVIDORES",
+                    color = Color.Black,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.sp
+                )
+            }
+            Text(
+                "Busca servidores de CS, TF2 y HL\nautomaticamente por tu region",
+                color = TextDim,
+                fontSize = 11.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                fontFamily = FontFamily.Monospace
+            )
         }
     }
 }
