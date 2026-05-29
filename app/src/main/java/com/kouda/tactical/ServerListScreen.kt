@@ -64,13 +64,11 @@ import com.kouda.tactical.ui.theme.CardBg
 import com.kouda.tactical.ui.theme.NeonOrange
 import com.kouda.tactical.ui.theme.TextMid
 
-@OptIn(ExperimentalMaterial3Api::class)
+
+ @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsState()
-    val servers = remember(state.servers, state.currentFilter, state.sortMode) {
-        viewModel.filteredAndSorted()
-    }
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
 
@@ -78,6 +76,18 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
     var selectedServer by remember { mutableStateOf<ServerInfo?>(null) }
     var showSortMenu by remember { mutableStateOf(false) }
     var copiedIp by remember { mutableStateOf<String?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchActive by remember { mutableStateOf(false) }
+
+    val servers = remember(state.servers, state.currentFilter, state.sortMode, searchQuery) {
+        val base = viewModel.filteredAndSorted()
+        if (searchQuery.isBlank()) base
+        else base.filter {
+            it.name.contains(searchQuery, ignoreCase = true) ||
+            it.map.contains(searchQuery, ignoreCase = true) ||
+            it.ip.contains(searchQuery, ignoreCase = true)
+        }
+    }
 
     LaunchedEffect(copiedIp) {
         if (copiedIp != null) { kotlinx.coroutines.delay(2000); copiedIp = null }
@@ -133,63 +143,127 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
             Column {
                 TopAppBar(
                     title = {
-                        Column {
-                            Text("KOUDA TACTICAL", color = Color.White,
-                                fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, letterSpacing = 2.sp)
-                            if (state.totalOnline > 0) {
-                                Text("${state.totalOnline} jugadores online", color = NeonOrange,
-                                    fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                        if (searchActive) {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                placeholder = {
+                                    Text("Buscar servidor, mapa, IP...", color = TextDim, fontSize = 13.sp)
+                                },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = NeonOrange,
+                                    unfocusedBorderColor = Color.Transparent,
+                                    cursorColor = NeonOrange,
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                ),
+                                modifier = Modifier.fillMaxWidth().padding(end = 8.dp)
+                            )
+                        } else {
+                            Column {
+                                Text(
+                                    "KOUDA TACTICAL", color = Color.White,
+                                    fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, letterSpacing = 2.sp
+                                )
+                                if (state.totalOnline > 0) {
+                                    Text(
+                                        "${state.totalOnline} jugadores online", color = NeonOrange,
+                                        fontSize = 11.sp, fontFamily = FontFamily.Monospace
+                                    )
+                                }
                             }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = BgDark),
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
+                        IconButton(onClick = {
+                            if (searchActive) {
+                                searchActive = false
+                                searchQuery = ""
+                            } else {
+                                onBack()
+                            }
+                        }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextMid)
                         }
                     },
                     actions = {
-                        Box {
-                            IconButton(onClick = { showSortMenu = true }) {
-                                Icon(Icons.AutoMirrored.Filled.Sort, "Sort", tint = TextMid)
-                            }
-                            DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }, containerColor = CardBg) {
-                                SortMode.entries.forEach { mode ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(mode.label,
-                                                color = if (state.sortMode == mode) NeonOrange else Color.White,
-                                                fontWeight = if (state.sortMode == mode) FontWeight.Bold else FontWeight.Normal)
-                                        },
-                                        leadingIcon = {
-                                            if (state.sortMode == mode)
-                                                Icon(Icons.Default.Check, null, tint = NeonOrange, modifier = Modifier.size(16.dp))
-                                        },
-                                        onClick = { viewModel.setSortMode(mode); showSortMenu = false }
-                                    )
+                        // Boton busqueda
+                        IconButton(onClick = {
+                            searchActive = !searchActive
+                            if (!searchActive) searchQuery = ""
+                        }) {
+                            Icon(
+                                if (searchActive) Icons.Default.Close else Icons.Default.Search,
+                                "Buscar",
+                                tint = if (searchActive) NeonOrange else TextMid
+                            )
+                        }
+                        // Boton ordenar (solo si no hay busqueda activa)
+                        if (!searchActive) {
+                            Box {
+                                IconButton(onClick = { showSortMenu = true }) {
+                                    Icon(Icons.AutoMirrored.Filled.Sort, "Sort", tint = TextMid)
+                                }
+                                DropdownMenu(
+                                    expanded = showSortMenu,
+                                    onDismissRequest = { showSortMenu = false },
+                                    containerColor = CardBg
+                                ) {
+                                    SortMode.entries.forEach { mode ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    mode.label,
+                                                    color = if (state.sortMode == mode) NeonOrange else Color.White,
+                                                    fontWeight = if (state.sortMode == mode) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            },
+                                            leadingIcon = {
+                                                if (state.sortMode == mode)
+                                                    Icon(Icons.Default.Check, null, tint = NeonOrange, modifier = Modifier.size(16.dp))
+                                            },
+                                            onClick = { viewModel.setSortMode(mode); showSortMenu = false }
+                                        )
+                                    }
                                 }
                             }
-                        }
-                        IconButton(onClick = viewModel::refresh) {
-                            Icon(Icons.Default.Refresh, "Refresh", tint = NeonOrange)
+                            IconButton(onClick = viewModel::refresh) {
+                                Icon(Icons.Default.Refresh, "Refresh", tint = NeonOrange)
+                            }
                         }
                     }
                 )
-                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(
-                    Brush.horizontalGradient(listOf(Color.Transparent, NeonOrange.copy(0.5f), Color.Transparent))
-                ))
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(1.dp).background(
+                        Brush.horizontalGradient(
+                            listOf(Color.Transparent, NeonOrange.copy(0.5f), Color.Transparent)
+                        )
+                    )
+                )
             }
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }, containerColor = NeonOrange, shape = CircleShape) {
+            FloatingActionButton(
+                onClick = { showAddDialog = true },
+                containerColor = NeonOrange,
+                shape = CircleShape
+            ) {
                 Icon(Icons.Default.Add, "Add server", tint = Color.Black)
             }
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            GameFilterRow(currentFilter = state.currentFilter, onFilterSelected = viewModel::setFilter)
 
-            if (state.watchingIp != null) {
+            if (!searchActive) {
+                GameFilterRow(
+                    currentFilter = state.currentFilter,
+                    onFilterSelected = viewModel::setFilter
+                )
+            }
+
+            if (state.watchingIp != null && !searchActive) {
                 WatchingBanner(ip = state.watchingIp!!, onCancel = viewModel::cancelWatch)
             }
 
@@ -205,8 +279,35 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
                 }
             }
 
+            // Indicador de resultados cuando hay busqueda activa
+            if (searchActive && searchQuery.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${servers.size} resultado${if (servers.size != 1) "s" else ""} para \"$searchQuery\"",
+                        color = TextDim,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+
             when {
                 state.isLoading && servers.isEmpty() -> LoadingState()
+                servers.isEmpty() && !state.isLoading && searchQuery.isNotBlank() -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.Search, null, tint = TextDim, modifier = Modifier.size(48.dp))
+                            Text("Sin resultados para \"$searchQuery\"", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Proba con otro nombre o IP", color = TextDim, fontSize = 13.sp)
+                        }
+                    }
+                }
                 servers.isEmpty() && !state.isLoading -> EmptyState()
                 else -> {
                     LazyColumn(
@@ -215,7 +316,8 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
                     ) {
                         itemsIndexed(servers, key = { _, s -> s.ip }) { index, server ->
                             AnimatedServerCard(
-                                server = server, index = index,
+                                server = server,
+                                index = index,
                                 onClick = { selectedServer = server },
                                 onFavToggle = { viewModel.toggleFavorite(server.ip) },
                                 onLongPress = {
