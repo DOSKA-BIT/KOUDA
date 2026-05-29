@@ -308,8 +308,14 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
                         }
                     }
                 }
-                servers.isEmpty() && !state.isLoading -> EmptyState()
-                else -> {
+                servers.isEmpty() && !state.isLoading -> EmptyState(
+    onDiscover = {
+        viewModelScope.launch {
+            ServerDiscovery.discoverAndSave(context)
+            viewModel.refresh()
+        }
+    }
+)
                     LazyColumn(
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
