@@ -224,7 +224,14 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
             .build()
         workManager.enqueueUniqueWork("watch_$ip", ExistingWorkPolicy.REPLACE, workRequest)
     }
-
+    
+     fun discoverServers() {
+    viewModelScope.launch(Dispatchers.IO) {
+        _state.update { it.copy(isLoading = true) }
+        ServerDiscovery.discoverAndSave(getApplication())
+        refresh()
+    }
+     }
     fun filteredAndSorted(): List<ServerInfo> {
         val s = _state.value
         val filtered = if (s.currentFilter == GameFilter.ALL) s.servers
