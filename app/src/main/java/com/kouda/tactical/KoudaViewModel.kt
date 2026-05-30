@@ -1,6 +1,5 @@
 package com.kouda.tactical
 
-import com.kouda.tactical.network.ServerDiscovery
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
@@ -20,6 +19,8 @@ import com.kouda.tactical.data.ServerHistory
 import com.kouda.tactical.data.ServerInfo
 import com.kouda.tactical.data.ServerSnapshot
 import com.kouda.tactical.data.SortMode
+import com.kouda.tactical.network.GameTrackerSearch
+import com.kouda.tactical.network.SearchResult
 import com.kouda.tactical.network.SourceQuery
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -32,8 +33,14 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 data class UiState(
-    val servers: List<ServerInfo> = emptyList(),
-    val isLoading: Boolean = false,
+    // Mis servidores (agregados a mano)
+    val myServers: List<ServerInfo> = emptyList(),
+    val isLoadingMy: Boolean = false,
+    // Resultados de busqueda en internet
+    val searchResults: List<SearchResult> = emptyList(),
+    val isSearching: Boolean = false,
+    val lastSearchQuery: String = "",
+    // Otros
     val currentFilter: GameFilter = GameFilter.ALL,
     val sortMode: SortMode = SortMode.FAVORITES,
     val watchingIp: String? = null,
@@ -57,26 +64,19 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
     private val defaultServers = listOf("45.235.98.50:27015")
 
     init {
-    val app = getApplication<Application>()
-    if (ServerDiscovery.shouldDiscover(app)) {
-        viewModelScope.launch(Dispatchers.IO) {
-            ServerDiscovery.discoverAndSave(app)
-            refresh()
-        }
-    } else {
         refresh()
     }
-    }
+
+    // ─── MIS SERVIDORES ───────────────────────────────────────────────────────
 
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isLoading = true, servers = emptyList(), totalOnline = 0) }
+            _state.update { it.copy(isLoadingMy = true, myServers = emptyList(), totalOnline = 0) }
             val favs = loadFavs()
             val autoWatched = loadAutoWatch()
             val servers = loadServers()
-            val combined = (favs + servers.filter { it !in favs }).distinct()
 
-            val results = combined.map { addr ->
+            val results = servers.map { addr ->
                 async {
                     val (info, _) = SourceQuery.queryServer(addr)
                     info?.copy(
@@ -91,18 +91,17 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
             results.forEach { server ->
                 val snap = ServerSnapshot(now, server.curPlayers, server.maxPlayers)
                 val existing = histories[server.ip] ?: ServerHistory(server.ip)
-                val updated = existing.copy(
+                histories[server.ip] = existing.copy(
                     snapshots = (existing.snapshots + snap).takeLast(200)
                 )
-                histories[server.ip] = updated
             }
             saveAllHistories(histories)
 
             val total = results.sumOf { it.curPlayers }
             _state.update {
                 it.copy(
-                    servers = results,
-                    isLoading = false,
+                    myServers = results,
+                    isLoadingMy = false,
                     totalOnline = total,
                     histories = histories
                 )
@@ -112,11 +111,35 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
                 scheduleWatch(server.ip, server.name)
             }
 
-            // Actualizar cache del widget despues de tener los datos
             val app = getApplication<Application>()
             WidgetRefreshCallback.refreshWidgetData(app)
         }
     }
+
+    // ─── BUSQUEDA EN INTERNET ─────────────────────────────────────────────────
+
+    fun searchOnline(query: String) {
+        if (query.isBlank()) {
+            _state.update { it.copy(searchResults = emptyList(), lastSearchQuery = "") }
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            _state.update { it.copy(isSearching = true, lastSearchQuery = query) }
+            val results = GameTrackerSearch.search(query)
+            _state.update { it.copy(searchResults = results, isSearching = false) }
+        }
+    }
+
+    fun clearSearch() {
+        _state.update { it.copy(searchResults = emptyList(), lastSearchQuery = "", isSearching = false) }
+    }
+
+    // Guardar un resultado de busqueda como "mi servidor"
+    fun saveFromSearch(result: SearchResult) {
+        addServer(result.ip)
+    }
+
+    // ─── GESTION DE SERVIDORES ────────────────────────────────────────────────
 
     fun getHistory(ip: String): ServerHistory? = _state.value.histories[ip]
 
@@ -129,7 +152,7 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
         if (ip in favs) favs.remove(ip) else favs.add(ip)
         saveFavs(favs)
         _state.update { s ->
-            s.copy(servers = s.servers.map {
+            s.copy(myServers = s.myServers.map {
                 if (it.ip == ip) it.copy(isFav = !it.isFav) else it
             })
         }
@@ -137,7 +160,7 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleAutoWatch(ip: String) {
         val autoWatched = loadAutoWatch().toMutableList()
-        val server = _state.value.servers.find { it.ip == ip } ?: return
+        val server = _state.value.myServers.find { it.ip == ip } ?: return
         if (ip in autoWatched) {
             autoWatched.remove(ip)
             workManager.cancelUniqueWork("watch_$ip")
@@ -147,7 +170,7 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
         }
         saveAutoWatch(autoWatched)
         _state.update { s ->
-            s.copy(servers = s.servers.map {
+            s.copy(myServers = s.myServers.map {
                 if (it.ip == ip) it.copy(autoWatch = !it.autoWatch) else it
             })
         }
@@ -178,7 +201,7 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
         saveAllHistories(histories)
         _state.update { s ->
             s.copy(
-                servers = s.servers.filter { it.ip != ip },
+                myServers = s.myServers.filter { it.ip != ip },
                 histories = s.histories - ip
             )
         }
@@ -201,12 +224,20 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun cancelWatch() {
         val ip = _state.value.watchingIp ?: return
-        val server = _state.value.servers.find { it.ip == ip }
+        val server = _state.value.myServers.find { it.ip == ip }
         if (server?.autoWatch != true) workManager.cancelUniqueWork("watch_$ip")
         _state.update { it.copy(watchingIp = null, watchingName = null) }
     }
 
     fun clearAlert() = _state.update { it.copy(slotAlert = null) }
+
+    fun discoverServers() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _state.update { it.copy(isLoadingMy = true) }
+            com.kouda.tactical.network.ServerDiscovery.discoverAndSave(getApplication())
+            refresh()
+        }
+    }
 
     private fun scheduleWatch(ip: String, serverName: String) {
         val inputData = Data.Builder()
@@ -224,18 +255,11 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
             .build()
         workManager.enqueueUniqueWork("watch_$ip", ExistingWorkPolicy.REPLACE, workRequest)
     }
-    
-     fun discoverServers() {
-    viewModelScope.launch(Dispatchers.IO) {
-        _state.update { it.copy(isLoading = true) }
-        ServerDiscovery.discoverAndSave(getApplication())
-        refresh()
-    }
-     }
+
     fun filteredAndSorted(): List<ServerInfo> {
         val s = _state.value
-        val filtered = if (s.currentFilter == GameFilter.ALL) s.servers
-        else s.servers.filter { it.folder == s.currentFilter.tag }
+        val filtered = if (s.currentFilter == GameFilter.ALL) s.myServers
+        else s.myServers.filter { it.folder == s.currentFilter.tag }
         return when (s.sortMode) {
             SortMode.PING -> filtered.sortedBy { it.ping }
             SortMode.PLAYERS -> filtered.sortedByDescending { it.curPlayers }
@@ -245,6 +269,8 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
     }
+
+    // ─── Persistencia ─────────────────────────────────────────────────────────
 
     private fun loadServers(): List<String> {
         val json = prefs.getString("servers", null) ?: return defaultServers
