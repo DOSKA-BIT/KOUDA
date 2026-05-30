@@ -76,7 +76,7 @@ Sabés exactamente cuántos jugadores hay, el ping, el mapa actual y si hay luga
 ## Instalación
 
 ### Opción A — Descargar APK directo
-1. Entrá a [**Actions**](https://github.com/TU_USUARIO/KOUDA/actions)
+1. Entrá a [**Actions**](https://github.com/DOSKA-BIT/actions)
 2. Tocá el último build exitoso (tilde verde ✅)
 3. Bajá el artifact **Kouda-Debug-APK**
 4. Instalá en tu Android (necesitás permitir instalar de fuentes desconocidas)
