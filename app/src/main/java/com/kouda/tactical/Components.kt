@@ -1,8 +1,5 @@
 package com.kouda.tactical
 
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -15,17 +12,22 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -42,10 +44,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kouda.tactical.data.GameFilter
 import com.kouda.tactical.data.ServerSnapshot
+import com.kouda.tactical.ui.theme.CardBg
 import com.kouda.tactical.ui.theme.CardBorder
 import com.kouda.tactical.ui.theme.NeonOrange
 import com.kouda.tactical.ui.theme.TextDim
@@ -73,12 +77,16 @@ fun GameFilterRow(currentFilter: GameFilter, onFilterSelected: (GameFilter) -> U
                     )
                 },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = NeonOrange, selectedLabelColor = Color.Black,
-                    containerColor = com.kouda.tactical.ui.theme.CardBg, labelColor = TextMid
+                    selectedContainerColor = NeonOrange,
+                    selectedLabelColor = Color.Black,
+                    containerColor = CardBg,
+                    labelColor = TextMid
                 ),
                 border = FilterChipDefaults.filterChipBorder(
-                    enabled = true, selected = selected,
-                    selectedBorderColor = Color.Transparent, borderColor = CardBorder
+                    enabled = true,
+                    selected = selected,
+                    selectedBorderColor = Color.Transparent,
+                    borderColor = CardBorder
                 ),
                 shape = RoundedCornerShape(8.dp)
             )
@@ -90,7 +98,8 @@ fun GameFilterRow(currentFilter: GameFilter, onFilterSelected: (GameFilter) -> U
 fun WatchingBanner(ip: String, onCancel: () -> Unit) {
     val infiniteTransition = rememberInfiniteTransition(label = "watch")
     val pulse by infiniteTransition.animateFloat(
-        initialValue = 0.4f, targetValue = 1f,
+        initialValue = 0.4f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(800), RepeatMode.Reverse),
         label = "wp"
     )
@@ -102,12 +111,23 @@ fun WatchingBanner(ip: String, onCancel: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Icon(Icons.Default.Visibility, null, tint = NeonOrange.copy(alpha = pulse), modifier = Modifier.size(14.dp))
-        Text(
-            "Vigilando: $ip", color = NeonOrange, fontSize = 12.sp,
-            fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f)
+        Icon(
+            Icons.Default.Visibility,
+            null,
+            tint = NeonOrange.copy(alpha = pulse),
+            modifier = Modifier.size(14.dp)
         )
-        TextButton(onClick = onCancel, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+        Text(
+            "Vigilando: $ip",
+            color = NeonOrange,
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.weight(1f)
+        )
+        TextButton(
+            onClick = onCancel,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+        ) {
             Text("Cancelar", color = TextDim, fontSize = 11.sp)
         }
     }
@@ -120,8 +140,17 @@ fun LoadingState() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            CircularProgressIndicator(color = NeonOrange, strokeWidth = 2.dp, strokeCap = StrokeCap.Round)
-            Text("Escaneando servidores...", color = TextDim, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+            CircularProgressIndicator(
+                color = NeonOrange,
+                strokeWidth = 2.dp,
+                strokeCap = StrokeCap.Round
+            )
+            Text(
+                "Escaneando servidores...",
+                color = TextDim,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp
+            )
         }
     }
 }
@@ -145,7 +174,7 @@ fun EmptyState(onDiscover: () -> Unit = {}) {
                 "No hay servidores guardados todavia.",
                 color = TextDim,
                 fontSize = 13.sp,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(4.dp))
             Button(
@@ -153,12 +182,7 @@ fun EmptyState(onDiscover: () -> Unit = {}) {
                 colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Icon(
-                    Icons.Default.Search,
-                    null,
-                    tint = Color.Black,
-                    modifier = Modifier.size(18.dp)
-                )
+                Icon(Icons.Default.Search, null, tint = Color.Black, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     "BUSCAR SERVIDORES",
@@ -171,7 +195,7 @@ fun EmptyState(onDiscover: () -> Unit = {}) {
                 "Busca servidores de CS, TF2 y HL\nautomaticamente por tu region",
                 color = TextDim,
                 fontSize = 11.sp,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                textAlign = TextAlign.Center,
                 fontFamily = FontFamily.Monospace
             )
         }
@@ -184,8 +208,20 @@ fun StatItem(label: String, value: String, valueColor: Color) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Text(label, color = TextDim, fontSize = 9.sp, letterSpacing = 1.sp, fontFamily = FontFamily.Monospace)
-        Text(value, color = valueColor, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+        Text(
+            label,
+            color = TextDim,
+            fontSize = 9.sp,
+            letterSpacing = 1.sp,
+            fontFamily = FontFamily.Monospace
+        )
+        Text(
+            value,
+            color = valueColor,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.ExtraBold,
+            fontFamily = FontFamily.Monospace
+        )
     }
 }
 
@@ -195,8 +231,20 @@ fun HistoryItem(label: String, value: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Text(label, color = TextDim, fontSize = 8.sp, letterSpacing = 1.sp, fontFamily = FontFamily.Monospace)
-        Text(value, color = NeonOrange, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+        Text(
+            label,
+            color = TextDim,
+            fontSize = 8.sp,
+            letterSpacing = 1.sp,
+            fontFamily = FontFamily.Monospace
+        )
+        Text(
+            value,
+            color = NeonOrange,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.ExtraBold,
+            fontFamily = FontFamily.Monospace
+        )
     }
 }
 
