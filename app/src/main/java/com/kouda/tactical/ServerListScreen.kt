@@ -3,6 +3,8 @@ package com.kouda.tactical
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,8 +16,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -64,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kouda.tactical.data.ServerInfo
 import com.kouda.tactical.data.SortMode
+import com.kouda.tactical.network.BrowseGame
 import com.kouda.tactical.network.SearchResult
 import com.kouda.tactical.ui.theme.BgDark
 import com.kouda.tactical.ui.theme.CardBg
@@ -89,17 +94,24 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
     var selectedServer by remember { mutableStateOf<ServerInfo?>(null) }
     var showSortMenu by remember { mutableStateOf(false) }
     var copiedIp by remember { mutableStateOf<String?>(null) }
-    var searchQuery by remember { mutableStateOf("") }
-    var searchActive by remember { mutableStateOf(false) }
 
-    // Buscar en Gametracker con debounce
+    // Modo: "my" = mis servidores, "browse" = explorar, "search" = buscar
+    var mode by remember { mutableStateOf("my") }
+    var searchQuery by remember { mutableStateOf("") }
+
+    // Busqueda con debounce
     LaunchedEffect(searchQuery) {
         if (searchQuery.length >= 3) {
             kotlinx.coroutines.delay(600)
-            viewModel.searchOnline(searchQuery)
+            viewModel.searchByName(searchQuery)
         } else if (searchQuery.isBlank()) {
             viewModel.clearSearch()
         }
+    }
+
+    // Cargar servidores del juego seleccionado al entrar a browse
+    LaunchedEffect(mode, state.browseGame) {
+        if (mode == "browse") viewModel.browseGame(state.browseGame)
     }
 
     LaunchedEffect(copiedIp) {
@@ -124,8 +136,7 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
                 onShare = {
                     val text = "🎮 ${liveServer.name}\n🗺 Mapa: ${liveServer.map}\n👥 Jugadores: ${liveServer.players}\n📡 Ping: ${liveServer.pingStr}\n🌍 Pais: ${liveServer.country}\n🔗 IP: ${liveServer.ip}\n\nConectate desde Kouda Tactical"
                     val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, text)
+                        type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text)
                     }
                     context.startActivity(Intent.createChooser(intent, "Compartir servidor"))
                 },
@@ -156,37 +167,23 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
             Column {
                 TopAppBar(
                     title = {
-                        if (searchActive) {
+                        if (mode == "search") {
                             OutlinedTextField(
                                 value = searchQuery,
                                 onValueChange = { searchQuery = it },
-                                placeholder = {
-                                    Text(
-                                        "Buscar en Gametracker...",
-                                        color = TextDim, fontSize = 13.sp
-                                    )
-                                },
+                                placeholder = { Text("Buscar por nombre de servidor...", color = TextDim, fontSize = 13.sp) },
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = NeonOrange,
-                                    unfocusedBorderColor = Color.Transparent,
-                                    cursorColor = NeonOrange,
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
+                                    focusedBorderColor = NeonOrange, unfocusedBorderColor = Color.Transparent,
+                                    cursorColor = NeonOrange, focusedTextColor = Color.White, unfocusedTextColor = Color.White
                                 ),
                                 modifier = Modifier.fillMaxWidth().padding(end = 8.dp)
                             )
                         } else {
                             Column {
-                                Text(
-                                    "KOUDA TACTICAL", color = Color.White,
-                                    fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, letterSpacing = 2.sp
-                                )
+                                Text("KOUDA TACTICAL", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, letterSpacing = 2.sp)
                                 if (state.totalOnline > 0) {
-                                    Text(
-                                        "${state.totalOnline} jugadores online", color = NeonOrange,
-                                        fontSize = 11.sp, fontFamily = FontFamily.Monospace
-                                    )
+                                    Text("${state.totalOnline} jugadores online", color = NeonOrange, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                                 }
                             }
                         }
@@ -194,55 +191,53 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = BgDark),
                     navigationIcon = {
                         IconButton(onClick = {
-                            if (searchActive) {
-                                searchActive = false
-                                searchQuery = ""
-                                viewModel.clearSearch()
-                            } else onBack()
+                            when (mode) {
+                                "search" -> { mode = "my"; searchQuery = ""; viewModel.clearSearch() }
+                                "browse" -> mode = "my"
+                                else -> onBack()
+                            }
                         }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextMid)
                         }
                     },
                     actions = {
+                        // Buscar
                         IconButton(onClick = {
-                            searchActive = !searchActive
-                            if (!searchActive) { searchQuery = ""; viewModel.clearSearch() }
+                            mode = if (mode == "search") { searchQuery = ""; viewModel.clearSearch(); "my" } else "search"
                         }) {
                             Icon(
-                                if (searchActive) Icons.Default.Close else Icons.Default.Search,
-                                "Buscar",
-                                tint = if (searchActive) NeonOrange else TextMid
+                                if (mode == "search") Icons.Default.Close else Icons.Default.Search,
+                                "Buscar", tint = if (mode == "search") NeonOrange else TextMid
                             )
                         }
-                        if (!searchActive) {
+                        if (mode == "my") {
                             Box {
                                 IconButton(onClick = { showSortMenu = true }) {
                                     Icon(Icons.AutoMirrored.Filled.Sort, "Sort", tint = TextMid)
                                 }
-                                DropdownMenu(
-                                    expanded = showSortMenu,
-                                    onDismissRequest = { showSortMenu = false },
-                                    containerColor = CardBg
-                                ) {
-                                    SortMode.entries.forEach { mode ->
+                                DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }, containerColor = CardBg) {
+                                    SortMode.entries.forEach { sortMode ->
                                         DropdownMenuItem(
                                             text = {
-                                                Text(
-                                                    mode.label,
-                                                    color = if (state.sortMode == mode) NeonOrange else Color.White,
-                                                    fontWeight = if (state.sortMode == mode) FontWeight.Bold else FontWeight.Normal
-                                                )
+                                                Text(sortMode.label,
+                                                    color = if (state.sortMode == sortMode) NeonOrange else Color.White,
+                                                    fontWeight = if (state.sortMode == sortMode) FontWeight.Bold else FontWeight.Normal)
                                             },
                                             leadingIcon = {
-                                                if (state.sortMode == mode)
+                                                if (state.sortMode == sortMode)
                                                     Icon(Icons.Default.Check, null, tint = NeonOrange, modifier = Modifier.size(16.dp))
                                             },
-                                            onClick = { viewModel.setSortMode(mode); showSortMenu = false }
+                                            onClick = { viewModel.setSortMode(sortMode); showSortMenu = false }
                                         )
                                     }
                                 }
                             }
                             IconButton(onClick = viewModel::refresh) {
+                                Icon(Icons.Default.Refresh, "Refresh", tint = NeonOrange)
+                            }
+                        }
+                        if (mode == "browse") {
+                            IconButton(onClick = { viewModel.browseGame(state.browseGame) }) {
                                 Icon(Icons.Default.Refresh, "Refresh", tint = NeonOrange)
                             }
                         }
@@ -254,12 +249,9 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
             }
         },
         floatingActionButton = {
-            if (!searchActive) {
-                FloatingActionButton(
-                    onClick = { showAddDialog = true },
-                    containerColor = NeonOrange, shape = CircleShape
-                ) {
-                    Icon(Icons.Default.Add, "Add server", tint = Color.Black)
+            if (mode == "my") {
+                FloatingActionButton(onClick = { showAddDialog = true }, containerColor = NeonOrange, shape = CircleShape) {
+                    Icon(Icons.Default.Add, "Add", tint = Color.Black)
                 }
             }
         }
@@ -270,31 +262,23 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
 
-            // ─── FILTROS (solo fuera de busqueda) ───
-            if (!searchActive) {
-                item {
-                    GameFilterRow(
-                        currentFilter = state.currentFilter,
-                        onFilterSelected = viewModel::setFilter
-                    )
-                }
+            // ─── TABS DE MODO ───
+            item {
+                ModeTabs(
+                    currentMode = mode,
+                    onSelect = { newMode ->
+                        mode = newMode
+                        if (newMode != "search") { searchQuery = ""; viewModel.clearSearch() }
+                    }
+                )
             }
 
-            // ─── BANNER DE VIGILANCIA ───
-            if (state.watchingIp != null && !searchActive) {
-                item {
-                    WatchingBanner(ip = state.watchingIp!!, onCancel = viewModel::cancelWatch)
-                }
-            }
-
-            // ─── TOAST DE COPIADO ───
+            // ─── COPIADO TOAST ───
             if (copiedIp != null) {
                 item {
                     Row(
-                        modifier = Modifier.fillMaxWidth().background(NeonOrange.copy(0.15f))
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.fillMaxWidth().background(NeonOrange.copy(0.15f)).padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(Icons.Default.ContentCopy, null, tint = NeonOrange, modifier = Modifier.size(14.dp))
                         Text("Copiado: $copiedIp", color = NeonOrange, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
@@ -302,84 +286,81 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
                 }
             }
 
-            // ─── SECCIÓN: MIS SERVIDORES ───
-            item {
-                SectionHeader(
-                    title = "MIS SERVIDORES",
-                    count = myServers.size,
-                    isLoading = state.isLoadingMy
-                )
-            }
+            // ═══════════════════════════════════════════════════
+            // MODO: MIS SERVIDORES
+            // ═══════════════════════════════════════════════════
+            if (mode == "my") {
+                if (state.watchingIp != null) {
+                    item { WatchingBanner(ip = state.watchingIp!!, onCancel = viewModel::cancelWatch) }
+                }
 
-            if (state.isLoadingMy && myServers.isEmpty()) {
                 item {
-                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = NeonOrange, strokeWidth = 2.dp)
+                    GameFilterRow(currentFilter = state.currentFilter, onFilterSelected = viewModel::setFilter)
+                }
+
+                item {
+                    SectionHeader("MIS SERVIDORES", myServers.size, state.isLoadingMy)
+                }
+
+                if (state.isLoadingMy && myServers.isEmpty()) {
+                    item {
+                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = NeonOrange, strokeWidth = 2.dp)
+                        }
+                    }
+                } else if (myServers.isEmpty()) {
+                    item { EmptyMyServers(onDiscover = { viewModel.discoverServers() }) }
+                } else {
+                    itemsIndexed(myServers, key = { _, s -> "my_${s.ip}" }) { index, server ->
+                        AnimatedServerCard(
+                            server = server, index = index,
+                            onClick = { selectedServer = server },
+                            onFavToggle = { viewModel.toggleFavorite(server.ip) },
+                            onLongPress = { clipboard.setText(AnnotatedString(server.ip)); copiedIp = server.ip }
+                        )
                     }
                 }
-            } else if (myServers.isEmpty() && !state.isLoadingMy) {
-                item {
-                    EmptyMyServers(onDiscover = { viewModel.discoverServers() })
-                }
-            } else {
-                itemsIndexed(myServers, key = { _, s -> "my_${s.ip}" }) { index, server ->
-                    AnimatedServerCard(
-                        server = server, index = index,
-                        onClick = { selectedServer = server },
-                        onFavToggle = { viewModel.toggleFavorite(server.ip) },
-                        onLongPress = { clipboard.setText(AnnotatedString(server.ip)); copiedIp = server.ip }
-                    )
-                }
             }
 
-            // ─── SECCIÓN: RESULTADOS DE BÚSQUEDA ───
-            if (searchActive) {
-                item { Spacer(modifier = Modifier.height(8.dp)) }
+            // ═══════════════════════════════════════════════════
+            // MODO: EXPLORAR (top servers por juego)
+            // ═══════════════════════════════════════════════════
+            if (mode == "browse") {
                 item {
-                    SectionHeader(
-                        title = if (state.lastSearchQuery.isBlank()) "BUSCAR EN INTERNET"
-                                else "RESULTADOS EN GAMETRACKER",
-                        count = state.searchResults.size,
-                        isLoading = state.isSearching,
-                        subtitle = if (state.lastSearchQuery.isNotBlank())
-                            "\"${state.lastSearchQuery}\"" else null
+                    BrowseGameTabs(
+                        current = state.browseGame,
+                        onSelect = { viewModel.browseGame(it) }
                     )
                 }
 
-                if (state.isSearching) {
+                item {
+                    SectionHeader(
+                        title = "TOP SERVIDORES — ${state.browseGame.label}",
+                        count = state.browseResults.size,
+                        isLoading = state.isLoadingBrowse,
+                        subtitle = "Sudamerica primero · ordenados por jugadores"
+                    )
+                }
+
+                if (state.isLoadingBrowse) {
                     item {
-                        Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
+                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 CircularProgressIndicator(color = NeonOrange, strokeWidth = 2.dp)
-                                Text("Buscando en Gametracker...", color = TextDim, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                                Text("Buscando servidores activos...", color = TextDim, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                             }
                         }
                     }
-                } else if (searchQuery.length < 3 && searchQuery.isNotBlank()) {
+                } else if (state.browseResults.isEmpty()) {
                     item {
-                        Text(
-                            "Escribi al menos 3 caracteres para buscar",
-                            color = TextDim, fontSize = 12.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                } else if (state.searchResults.isEmpty() && state.lastSearchQuery.isNotBlank()) {
-                    item {
-                        Text(
-                            "Sin resultados para \"${state.lastSearchQuery}\"",
-                            color = TextDim, fontSize = 13.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
-                        )
+                        Text("No se encontraron servidores. Intentá de nuevo.", color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(8.dp))
                     }
                 } else {
-                    itemsIndexed(state.searchResults, key = { _, s -> "search_${s.ip}" }) { _, result ->
+                    itemsIndexed(state.browseResults, key = { _, s -> "browse_${s.ip}" }) { _, result ->
+                        val saved = viewModel.isServerSaved(result.ip)
                         SearchResultCard(
                             result = result,
-                            alreadySaved = state.myServers.any { it.ip == result.ip },
+                            alreadySaved = saved,
                             onSave = { viewModel.saveFromSearch(result) },
                             onLongPress = { clipboard.setText(AnnotatedString(result.ip)); copiedIp = result.ip }
                         )
@@ -387,7 +368,111 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
                 }
             }
 
-            item { Spacer(modifier = Modifier.height(72.dp)) }
+            // ═══════════════════════════════════════════════════
+            // MODO: BUSCAR POR NOMBRE
+            // ═══════════════════════════════════════════════════
+            if (mode == "search") {
+                item {
+                    SectionHeader(
+                        title = if (state.lastSearchQuery.isBlank()) "BUSCAR SERVIDOR" else "RESULTADOS",
+                        count = state.searchResults.size,
+                        isLoading = state.isSearching,
+                        subtitle = if (state.lastSearchQuery.isNotBlank()) "\"${state.lastSearchQuery}\"" else "Escribi el nombre del servidor"
+                    )
+                }
+
+                when {
+                    state.isSearching -> item {
+                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                CircularProgressIndicator(color = NeonOrange, strokeWidth = 2.dp)
+                                Text("Buscando \"${state.lastSearchQuery}\"...", color = TextDim, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+                    searchQuery.isNotBlank() && searchQuery.length < 3 -> item {
+                        Text("Escribi al menos 3 letras para buscar", color = TextDim, fontSize = 12.sp, modifier = Modifier.padding(8.dp), fontFamily = FontFamily.Monospace)
+                    }
+                    state.searchResults.isEmpty() && state.lastSearchQuery.isNotBlank() -> item {
+                        Text("Sin resultados para \"${state.lastSearchQuery}\"", color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(8.dp))
+                    }
+                    else -> {
+                        itemsIndexed(state.searchResults, key = { _, s -> "search_${s.ip}" }) { _, result ->
+                            val saved = viewModel.isServerSaved(result.ip)
+                            SearchResultCard(
+                                result = result,
+                                alreadySaved = saved,
+                                onSave = { viewModel.saveFromSearch(result) },
+                                onLongPress = { clipboard.setText(AnnotatedString(result.ip)); copiedIp = result.ip }
+                            )
+                        }
+                    }
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(80.dp)) }
+        }
+    }
+}
+
+// ─── MODE TABS ───────────────────────────────────────────────────────────────
+
+@Composable
+fun ModeTabs(currentMode: String, onSelect: (String) -> Unit) {
+    val tabs = listOf("my" to "Mis Servidores", "browse" to "Explorar", "search" to "Buscar")
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        tabs.forEach { (mode, label) ->
+            val selected = currentMode == mode
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (selected) NeonOrange else CardBg)
+                    .border(1.dp, if (selected) NeonOrange else CardBorder, RoundedCornerShape(8.dp))
+                    .clickable { onSelect(mode) }
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    label,
+                    color = if (selected) Color.Black else TextMid,
+                    fontSize = 11.sp,
+                    fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Normal,
+                    letterSpacing = 0.5.sp
+                )
+            }
+        }
+    }
+}
+
+// ─── BROWSE GAME TABS ────────────────────────────────────────────────────────
+
+@Composable
+fun BrowseGameTabs(current: BrowseGame, onSelect: (BrowseGame) -> Unit) {
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        BrowseGame.entries.forEach { game ->
+            val selected = current == game
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (selected) NeonOrange.copy(0.2f) else CardBg)
+                    .border(1.dp, if (selected) NeonOrange else CardBorder, RoundedCornerShape(8.dp))
+                    .clickable { onSelect(game) }
+                    .padding(horizontal = 14.dp, vertical = 7.dp)
+            ) {
+                Text(
+                    game.label,
+                    color = if (selected) NeonOrange else TextMid,
+                    fontSize = 12.sp,
+                    fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Normal
+                )
+            }
         }
     }
 }
@@ -395,23 +480,16 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
 // ─── SECTION HEADER ──────────────────────────────────────────────────────────
 
 @Composable
-fun SectionHeader(
-    title: String,
-    count: Int,
-    isLoading: Boolean = false,
-    subtitle: String? = null
-) {
+fun SectionHeader(title: String, count: Int, isLoading: Boolean = false, subtitle: String? = null) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Box(modifier = Modifier.size(3.dp, 16.dp).background(NeonOrange, RoundedCornerShape(2.dp)))
         Column(modifier = Modifier.weight(1f)) {
             Text(title, color = NeonOrange, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp, fontFamily = FontFamily.Monospace)
-            if (subtitle != null) {
-                Text(subtitle, color = TextDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-            }
+            if (subtitle != null) Text(subtitle, color = TextDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         }
         if (isLoading) {
             CircularProgressIndicator(color = NeonOrange, strokeWidth = 1.5.dp, modifier = Modifier.size(14.dp))
@@ -423,31 +501,26 @@ fun SectionHeader(
     }
 }
 
-// ─── EMPTY MY SERVERS ────────────────────────────────────────────────────────
+// ─── EMPTY STATE ─────────────────────────────────────────────────────────────
 
 @Composable
 fun EmptyMyServers(onDiscover: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("No tenés servidores guardados.", color = TextDim, fontSize = 13.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = onDiscover) {
-                Icon(Icons.Default.Search, null, tint = NeonOrange, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.size(4.dp))
-                Text("Buscar automaticamente", color = NeonOrange, fontSize = 12.sp)
-            }
+        Text("No tenés servidores guardados todavia.", color = TextDim, fontSize = 13.sp)
+        TextButton(onClick = onDiscover) {
+            Icon(Icons.Default.Search, null, tint = NeonOrange, modifier = Modifier.size(14.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Buscar automaticamente", color = NeonOrange, fontSize = 12.sp)
         }
-        Text(
-            "O usá la lupa para buscar en Gametracker",
-            color = TextDim, fontSize = 11.sp, fontFamily = FontFamily.Monospace
-        )
+        Text("O explorá servidores en la pestaña Explorar", color = TextDim, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
     }
 }
 
-// ─── SEARCH RESULT CARD ──────────────────────────────────────────────────────
+// ─── SEARCH / BROWSE RESULT CARD ─────────────────────────────────────────────
 
 @Composable
 fun SearchResultCard(
@@ -458,11 +531,11 @@ fun SearchResultCard(
 ) {
     val cardFillColor = fillColor(result.fillRatio)
 
-    androidx.compose.foundation.layout.Box(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, if (alreadySaved) NeonOrange.copy(0.3f) else CardBorder, RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, if (alreadySaved) NeonOrange.copy(0.3f) else CardBorder, RoundedCornerShape(12.dp))
             .background(CardBg)
     ) {
         Column {
@@ -477,33 +550,48 @@ fun SearchResultCard(
                         }
                         Text(result.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Text("${result.map}  ·  ${result.ip}", color = TextDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        buildString {
+                            if (result.map != "-" && result.map.isNotBlank()) append("${result.map}  ·  ")
+                            append(result.ip)
+                        },
+                        color = TextDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
                 }
-                Spacer(modifier = Modifier.size(8.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         result.players,
                         color = if (result.isFull) FillFull else Color.White,
                         fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, fontFamily = FontFamily.Monospace
                     )
-                    // Boton guardar
                     if (alreadySaved) {
-                        Text("Guardado", color = NeonOrange, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        Box(
+                            modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(NeonOrange.copy(0.15f)).padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text("Guardado", color = NeonOrange, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
                     } else {
-                        IconButton(onClick = onSave, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Default.AddCircle, "Guardar", tint = NeonOrange, modifier = Modifier.size(18.dp))
+                        IconButton(
+                            onClick = onSave,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.AddCircle, "Guardar", tint = NeonOrange, modifier = Modifier.size(22.dp))
                         }
                     }
                 }
             }
             // Barra de ocupacion
             Box(modifier = Modifier.fillMaxWidth().height(3.dp).background(CardBorder)) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(result.fillRatio.coerceIn(0f, 1f))
-                        .height(3.dp)
-                        .background(Brush.horizontalGradient(listOf(cardFillColor.copy(0.5f), cardFillColor)))
-                )
+                if (result.fillRatio > 0) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(result.fillRatio.coerceIn(0f, 1f))
+                            .height(3.dp)
+                            .background(Brush.horizontalGradient(listOf(cardFillColor.copy(0.5f), cardFillColor)))
+                    )
+                }
             }
         }
     }
