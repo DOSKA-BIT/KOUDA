@@ -7,11 +7,11 @@
 **Browser de servidores para CS 1.6, CS:GO, TF2 y Half-Life**  
 App Android nativa · Open Source · Sin anuncios
 
-[![Build APK](https://github.com/TU_USUARIO/KOUDA/actions/workflows/build.yml/badge.svg)](https://github.com/TU_USUARIO/KOUDA/actions/workflows/build.yml)
+[![Build APK](https://github.com/DOSKA-BIT/KOUDA/actions/workflows/build.yml/badge.svg)](https://github.com/DOSKA-BIT/KOUDA/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android%206.0%2B-orange)](https://github.com/TU_USUARIO/KOUDA/releases)
 
-### [⬇️ DESCARGAR APK](https://github.com/TU_USUARIO/KOUDA/actions) · [📸 Capturas](#capturas) · [🚀 Features](#features)
+### [⬇️ DESCARGAR APK](https://github.com/DOSKA-BIT/KOUDA/actions) · [📸 Capturas](#capturas) · [🚀 Features](#features)
 
 </div>
 
