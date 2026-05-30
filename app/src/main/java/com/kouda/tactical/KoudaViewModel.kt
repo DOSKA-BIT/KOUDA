@@ -19,8 +19,9 @@ import com.kouda.tactical.data.ServerHistory
 import com.kouda.tactical.data.ServerInfo
 import com.kouda.tactical.data.ServerSnapshot
 import com.kouda.tactical.data.SortMode
-import com.kouda.tactical.network.GameTrackerSearch
+import com.kouda.tactical.network.BrowseGame
 import com.kouda.tactical.network.SearchResult
+import com.kouda.tactical.network.ServerBrowser
 import com.kouda.tactical.network.SourceQuery
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -33,10 +34,14 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 data class UiState(
-    // Mis servidores (agregados a mano)
+    // Mis servidores
     val myServers: List<ServerInfo> = emptyList(),
     val isLoadingMy: Boolean = false,
-    // Resultados de busqueda en internet
+    // Explorar por juego
+    val browseResults: List<SearchResult> = emptyList(),
+    val isLoadingBrowse: Boolean = false,
+    val browseGame: BrowseGame = BrowseGame.CS16,
+    // Busqueda por nombre
     val searchResults: List<SearchResult> = emptyList(),
     val isSearching: Boolean = false,
     val lastSearchQuery: String = "",
@@ -79,10 +84,7 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
             val results = servers.map { addr ->
                 async {
                     val (info, _) = SourceQuery.queryServer(addr)
-                    info?.copy(
-                        isFav = addr in favs,
-                        autoWatch = addr in autoWatched
-                    )
+                    info?.copy(isFav = addr in favs, autoWatch = addr in autoWatched)
                 }
             }.awaitAll().filterNotNull()
 
@@ -99,12 +101,7 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
 
             val total = results.sumOf { it.curPlayers }
             _state.update {
-                it.copy(
-                    myServers = results,
-                    isLoadingMy = false,
-                    totalOnline = total,
-                    histories = histories
-                )
+                it.copy(myServers = results, isLoadingMy = false, totalOnline = total, histories = histories)
             }
 
             results.filter { it.autoWatch && it.isFull }.forEach { server ->
@@ -116,36 +113,43 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ─── BUSQUEDA EN INTERNET ─────────────────────────────────────────────────
+    // ─── EXPLORAR POR JUEGO ───────────────────────────────────────────────────
 
-    fun searchOnline(query: String) {
+    fun browseGame(game: BrowseGame) {
+        _state.update { it.copy(browseGame = game, browseResults = emptyList(), isLoadingBrowse = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val results = ServerBrowser.topServers(game)
+            _state.update { it.copy(browseResults = results, isLoadingBrowse = false) }
+        }
+    }
+
+    // ─── BUSQUEDA POR NOMBRE ──────────────────────────────────────────────────
+
+    fun searchByName(query: String) {
         if (query.isBlank()) {
             _state.update { it.copy(searchResults = emptyList(), lastSearchQuery = "") }
             return
         }
+        _state.update { it.copy(isSearching = true, lastSearchQuery = query) }
         viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isSearching = true, lastSearchQuery = query) }
-            val results = GameTrackerSearch.search(query)
+            val results = ServerBrowser.searchByName(query)
             _state.update { it.copy(searchResults = results, isSearching = false) }
         }
     }
 
-    fun clearSearch() {
-        _state.update { it.copy(searchResults = emptyList(), lastSearchQuery = "", isSearching = false) }
+    fun clearSearch() = _state.update {
+        it.copy(searchResults = emptyList(), lastSearchQuery = "", isSearching = false)
     }
 
-    // Guardar un resultado de busqueda como "mi servidor"
-    fun saveFromSearch(result: SearchResult) {
-        addServer(result.ip)
-    }
-
-    // ─── GESTION DE SERVIDORES ────────────────────────────────────────────────
+    // ─── GESTIÓN ──────────────────────────────────────────────────────────────
 
     fun getHistory(ip: String): ServerHistory? = _state.value.histories[ip]
 
     fun setFilter(filter: GameFilter) = _state.update { it.copy(currentFilter = filter) }
 
     fun setSortMode(mode: SortMode) = _state.update { it.copy(sortMode = mode) }
+
+    fun isServerSaved(ip: String): Boolean = _state.value.myServers.any { it.ip == ip }
 
     fun toggleFavorite(ip: String) {
         val favs = loadFavs().toMutableList()
@@ -185,25 +189,21 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun saveFromSearch(result: SearchResult) {
+        addServer(result.ip)
+    }
+
     fun removeServer(ip: String) {
         val servers = loadServers().toMutableList()
         servers.remove(ip)
         saveServers(servers)
-        val favs = loadFavs().toMutableList()
-        favs.remove(ip)
-        saveFavs(favs)
-        val autoWatched = loadAutoWatch().toMutableList()
-        autoWatched.remove(ip)
-        saveAutoWatch(autoWatched)
+        loadFavs().toMutableList().also { it.remove(ip); saveFavs(it) }
+        loadAutoWatch().toMutableList().also { it.remove(ip); saveAutoWatch(it) }
         workManager.cancelUniqueWork("watch_$ip")
-        val histories = loadAllHistories().toMutableMap()
-        histories.remove(ip)
+        val histories = loadAllHistories().toMutableMap().also { it.remove(ip) }
         saveAllHistories(histories)
         _state.update { s ->
-            s.copy(
-                myServers = s.myServers.filter { it.ip != ip },
-                histories = s.histories - ip
-            )
+            s.copy(myServers = s.myServers.filter { it.ip != ip }, histories = s.histories - ip)
         }
     }
 
@@ -245,14 +245,11 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
             .putString(SlotWorker.KEY_SERVER_NAME, serverName)
             .build()
         val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
+            .setRequiredNetworkType(NetworkType.CONNECTED).build()
         val workRequest = OneTimeWorkRequestBuilder<SlotWorker>()
-            .setInputData(inputData)
-            .setConstraints(constraints)
+            .setInputData(inputData).setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.LINEAR, 30, TimeUnit.SECONDS)
-            .addTag(SlotWorker.WORK_TAG)
-            .build()
+            .addTag(SlotWorker.WORK_TAG).build()
         workManager.enqueueUniqueWork("watch_$ip", ExistingWorkPolicy.REPLACE, workRequest)
     }
 
@@ -270,34 +267,25 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ─── Persistencia ─────────────────────────────────────────────────────────
-
     private fun loadServers(): List<String> {
         val json = prefs.getString("servers", null) ?: return defaultServers
         return gson.fromJson(json, object : TypeToken<List<String>>() {}.type)
     }
-    private fun saveServers(list: List<String>) =
-        prefs.edit().putString("servers", gson.toJson(list)).apply()
-
+    private fun saveServers(list: List<String>) = prefs.edit().putString("servers", gson.toJson(list)).apply()
     private fun loadFavs(): List<String> {
         val json = prefs.getString("favs", null) ?: return emptyList()
         return gson.fromJson(json, object : TypeToken<List<String>>() {}.type)
     }
-    private fun saveFavs(list: List<String>) =
-        prefs.edit().putString("favs", gson.toJson(list)).apply()
-
+    private fun saveFavs(list: List<String>) = prefs.edit().putString("favs", gson.toJson(list)).apply()
     private fun loadAutoWatch(): List<String> {
         val json = prefs.getString("auto_watch", null) ?: return emptyList()
         return gson.fromJson(json, object : TypeToken<List<String>>() {}.type)
     }
-    private fun saveAutoWatch(list: List<String>) =
-        prefs.edit().putString("auto_watch", gson.toJson(list)).apply()
-
+    private fun saveAutoWatch(list: List<String>) = prefs.edit().putString("auto_watch", gson.toJson(list)).apply()
     private fun loadAllHistories(): Map<String, ServerHistory> {
         val json = prefs.getString("histories", null) ?: return emptyMap()
-        return try {
-            gson.fromJson(json, object : TypeToken<Map<String, ServerHistory>>() {}.type)
-        } catch (e: Exception) { emptyMap() }
+        return try { gson.fromJson(json, object : TypeToken<Map<String, ServerHistory>>() {}.type) }
+        catch (e: Exception) { emptyMap() }
     }
     private fun saveAllHistories(map: Map<String, ServerHistory>) =
         prefs.edit().putString("histories", gson.toJson(map)).apply()
