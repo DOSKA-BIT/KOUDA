@@ -83,7 +83,7 @@ Sabés exactamente cuántos jugadores hay, el ping, el mapa actual y si hay luga
 
 ### Opción B — Compilar vos mismo
 ```bash
-git clone https://github.com/TU_USUARIO/KOUDA.git
+git clone https://github.com/DOSKA-BIT/KOUDA.git
 cd KOUDA
 ./gradlew assembleDebug
 ```
