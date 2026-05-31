@@ -9,9 +9,10 @@ App Android nativa · Open Source · Sin anuncios
 
 [![Build APK](https://github.com/DOSKA-BIT/KOUDA/actions/workflows/build.yml/badge.svg)](https://github.com/DOSKA-BIT/KOUDA/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Android%206.0%2B-orange)](https://github.com/TU_USUARIO/KOUDA/releases)
+[![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-orange)](https://github.com/DOSKA-BIT/KOUDA/releases/latest)
+[![Discord](https://img.shields.io/discord/66d3bPqdwM?label=Discord&logo=discord&color=5865F2)](https://discord.gg/66d3bPqdwM)
 
-### [⬇️ DESCARGAR APK](https://github.com/DOSKA-BIT/KOUDA/actions) · [📸 Capturas](#capturas) · [🚀 Features](#features)
+### [⬇️ DESCARGAR APK](https://github.com/DOSKA-BIT/KOUDA/releases/latest/download/app-debug.apk) · [🌐 Página web](https://doska-bit.github.io/KOUDA/) · [💬 Discord](https://discord.gg/66d3bPqdwM)
 
 </div>
 
@@ -25,6 +26,16 @@ Sabés exactamente cuántos jugadores hay, el ping, el mapa actual y si hay luga
 
 ---
 
+## Instalación rápida
+
+1. **[Descargá el APK](https://github.com/DOSKA-BIT/KOUDA/releases/latest/download/app-debug.apk)** — link directo, siempre la última versión
+2. En Android: **Ajustes → Seguridad → Permitir fuentes desconocidas**
+3. Abrí el APK descargado e instalá
+
+> Primera vez instalando APKs externos? Mirá la [guía paso a paso](https://doska-bit.github.io/KOUDA/#instalacion)
+
+---
+
 ## Features
 
 ### 🎮 Browser de Servidores
@@ -34,68 +45,25 @@ Sabés exactamente cuántos jugadores hay, el ping, el mapa actual y si hay luga
 - Ping preciso con 3 mediciones (mediana)
 - Filtros por juego: **CS 1.6 · CS:GO · TF2 · Half-Life**
 - Ordenar por: Favoritos, Ping, Jugadores, Nombre
-- Búsqueda en tiempo real por nombre, mapa o IP
-- Descubrimiento automático via Gametracker
 
-### 👥 Jugadores
-- Escaneo de jugadores activos con nombre y puntuación
-- Sistema de fallback: UDP directo → Gametracker → Steam API
-- Top 1 resaltado con trofeo 🏆
-
-### ⭐ Gestión de Servidores
-- Favoritos con estrella
-- Agregar servidores manualmente por IP:Puerto
-- Eliminar servidores
-- Tap largo copia la IP al portapapeles
-- Compartir servidor por WhatsApp, Telegram, Discord, etc.
+### 🌎 Explorar y Buscar
+- **Mis Servidores** — los que agregaste vos, separados
+- **Explorar** — top servidores activos por juego, Sudamérica primero
+- **Buscar** — buscá por nombre de servidor en internet
 
 ### 🔔 Slot Watcher
-- Vigilancia manual: activás y te avisa cuando hay lugar
-- **Vigilancia automática por servidor** con toggle individual
-- Corre en **background con WorkManager** — funciona con la app cerrada
-- Notificación nativa con vibración cuando se libera un slot
+- Vigilancia automática por servidor con toggle individual
+- Corre en **background** — funciona con la app cerrada
+- Notificación nativa cuando se libera un slot
 
 ### 📊 Historial e Inteligencia
-- Guarda el historial de cada servidor automáticamente
-- Muestra consultas totales, promedio 24hs y **hora pico**
-- Mini gráfico de barras con actividad reciente
+- Historial de consultas por servidor
+- Promedio 24hs y hora pico
+- Mini gráfico de actividad reciente
 
 ### 🖼️ Widget de Pantalla de Inicio
-- Muestra favoritos con jugadores y ping sin abrir la app
-- Se actualiza automáticamente cada 30 minutos
-- Compatible con launchers de Samsung, Motorola, Pixel y más
-
-### 🎨 UI/UX
-- Diseño dark con naranja neón
-- Ícono adaptativo que se amolda a cada launcher (redondo, cuadrado, etc.)
-- Pantalla de menú con animaciones (glow rotativo, grid de puntos)
-- Animaciones de entrada escalonadas
-
----
-
-## Instalación
-
-### Opción A — Descargar APK directo
-1. Entrá a [**Actions**](https://github.com/DOSKA-BIT/actions)
-2. Tocá el último build exitoso (tilde verde ✅)
-3. Bajá el artifact **Kouda-Debug-APK**
-4. Instalá en tu Android (necesitás permitir instalar de fuentes desconocidas)
-
-### Opción B — Compilar vos mismo
-```bash
-git clone https://github.com/DOSKA-BIT/KOUDA.git
-cd KOUDA
-./gradlew assembleDebug
-```
-El APK queda en `app/build/outputs/apk/debug/`
-
-**Requisitos:** Android 8.0+ (API 26) · Gradle 8.9 · JDK 17
-
----
-
-## Capturas
-
-> *Coming soon — se agregan con el primer release público*
+- Favoritos con jugadores y ping sin abrir la app
+- Compatible con cualquier launcher Android
 
 ---
 
@@ -103,35 +71,39 @@ El APK queda en `app/build/outputs/apk/debug/`
 
 ```
 app/src/main/java/com/kouda/tactical/
-├── MainActivity.kt              # Entry point
-├── KoudaViewModel.kt            # Estado y lógica de negocio
-├── MenuScreen.kt                # Pantalla de inicio con animaciones
-├── ServerListScreen.kt          # Lista principal de servidores
-├── ServerCards.kt               # Cards con barra de ocupación
-├── Dialogs.kt                   # Dialogs de opciones, scan, agregar
-├── Components.kt                # Componentes reutilizables
-├── SlotWorker.kt                # WorkManager para notificaciones
-├── KoudaWidget.kt               # Widget de pantalla de inicio
-├── data/
-│   └── Models.kt                # ServerInfo, PlayerInfo, historial
+├── MainActivity.kt
+├── KoudaViewModel.kt
+├── MenuScreen.kt
+├── ServerListScreen.kt
+├── ServerCards.kt
+├── Dialogs.kt
+├── Components.kt
+├── SlotWorker.kt
+├── KoudaWidget.kt
+├── data/Models.kt
 └── network/
-    ├── SourceQuery.kt           # Protocolo UDP Source Engine Query
-    ├── MasterServer.kt          # Consulta Master Server List de Valve
-    └── ServerDiscovery.kt       # Descubrimiento via Gametracker
+    ├── SourceQuery.kt
+    ├── ServerBrowser.kt
+    └── ServerDiscovery.kt
 ```
 
-**Stack:** Kotlin · Jetpack Compose · WorkManager · Glance (widgets) · OkHttp · Gson
+**Stack:** Kotlin · Jetpack Compose · WorkManager · Glance · OkHttp · Gson
+
+---
+
+## Comunidad
+
+¿Preguntas, sugerencias o querés mostrar tu servidor? Unite al Discord:
+
+**[💬 discord.gg/66d3bPqdwM](https://discord.gg/66d3bPqdwM)**
 
 ---
 
 ## Contribuir
 
 1. Fork el repo
-2. Creá una branch: `git checkout -b feature/mi-mejora`
-3. Commiteá tus cambios
-4. Push y abrí un Pull Request
-
-Toda contribución es bienvenida — bugs, features, servidores para agregar al fallback, traducciones.
+2. `git checkout -b feature/mi-mejora`
+3. Commiteá y abrí un Pull Request
 
 ---
 
@@ -139,22 +111,21 @@ Toda contribución es bienvenida — bugs, features, servidores para agregar al 
 
 - [ ] Soporte para Minecraft, Rust y ARK
 - [ ] Modo LAN — escanear red WiFi local
-- [ ] Estadísticas globales en la pantalla de menú
+- [ ] Estadísticas globales en el menú
 - [ ] Publicar en F-Droid
-- [ ] Tema claro
 
 ---
 
 ## Licencia
 
-MIT © 2025 — Libre para usar, modificar y distribuir.
+MIT © 2025 DOSKA-BIT
 
 ---
 
 <div align="center">
 
-Hecho con ❤️ y mucho CS 1.6
+**[⬇ Descargar APK](https://github.com/DOSKA-BIT/KOUDA/releases/latest/download/app-debug.apk) · [🌐 Web](https://doska-bit.github.io/KOUDA/) · [💬 Discord](https://discord.gg/66d3bPqdwM)**
 
-**[⬆ Volver arriba](#kouda-tactical)**
+Hecho con ❤️ y mucho CS 1.6
 
 </div>
