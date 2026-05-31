@@ -309,7 +309,7 @@ fun ServerListScreen(viewModel: KoudaViewModel, onBack: () -> Unit) {
                         }
                     }
                 } else if (myServers.isEmpty()) {
-                    item { EmptyMyServers(onDiscover = { viewModel.discoverServers() }) }
+                  item { EmptyMyServers(onDiscover = { viewModel.discoverServers(); mode = "browse" }) }
                 } else {
                     itemsIndexed(myServers, key = { _, s -> "my_${s.ip}" }) { index, server ->
                         AnimatedServerCard(
