@@ -74,11 +74,13 @@ object ServerBrowser {
 
         // Ordenar: Sudamerica primero, luego por jugadores
         return results
-            .sortedWith(
-                compareByDescending<SearchResult> { isSouthAmerica(it.country) }
-                    .thenByDescending { it.curPlayers }
-            )
-            .take(limit)
+    .filter { it.curPlayers > 0 }          // 
+    .filter { it.maxPlayers in 2..64 }      // 
+    .sortedWith(
+        compareByDescending<SearchResult> { isSouthAmerica(it.country) }
+            .thenByDescending { it.curPlayers }
+    )
+    .take(limit)
     }
 
     /**
@@ -132,7 +134,8 @@ object ServerBrowser {
 
             val cur = s.optInt("players", 0)
             val max = s.optInt("max_players", 0)
-            if (max <= 0 || max > 128) continue
+            if (max <= 0 || max > 64) continue
+            if (cur <= 0) continue   // 
 
             val folder = s.optString("gamedir", gameFolder)
 
