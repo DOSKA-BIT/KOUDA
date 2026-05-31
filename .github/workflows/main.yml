@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -20,6 +22,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+          cache: 'gradle'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -27,8 +30,30 @@ jobs:
       - name: Build Debug APK
         run: gradle assembleDebug
 
-      - name: Upload APK
+      - name: Get version date
+        id: date
+        run: echo "date=$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_OUTPUT
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: Kouda-Debug-APK
           path: app/build/outputs/apk/debug/*.apk
+
+      - name: Create Release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.date.outputs.date }}
+          name: "Kouda Tactical ${{ steps.date.outputs.date }}"
+          body: |
+            ## Kouda Tactical — Ultima version
+
+            ### Instalacion
+            1. Descarga el archivo `kouda-tactical.apk`
+            2. En Android: Ajustes → Seguridad → Permitir fuentes desconocidas
+            3. Abre el APK descargado e instala
+
+            > Build automatico generado desde el codigo fuente
+          files: app/build/outputs/apk/debug/*.apk
+          make_latest: true
