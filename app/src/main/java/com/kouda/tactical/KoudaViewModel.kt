@@ -232,11 +232,9 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
     fun clearAlert() = _state.update { it.copy(slotAlert = null) }
 
     fun discoverServers() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isLoadingMy = true) }
-            com.kouda.tactical.network.ServerDiscovery.discoverAndSave(getApplication())
-            refresh()
-        }
+    // 
+    browseGame(_state.value.browseGame)
+    
     }
 
     private fun scheduleWatch(ip: String, serverName: String) {
