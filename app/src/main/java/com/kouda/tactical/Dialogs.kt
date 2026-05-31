@@ -283,15 +283,21 @@ fun AddServerDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    val t = ip.trim()
-                    if (Regex("""^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$""").matches(t)) onAdd(t) else error = true
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
-                shape = RoundedCornerShape(8.dp)
-            ) { Text("VINCULAR", color = Color.Black, fontWeight = FontWeight.ExtraBold) }
+    Button(
+        onClick = {
+            val t = ip.trim()
+                .replace(" ", "")
+                .replace("\n", "")
+                .replace("\t", "")
+            val valid = Regex("""^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$""").matches(t)
+            if (valid) onAdd(t) else error = true
         },
+        colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Text("VINCULAR", color = Color.Black, fontWeight = FontWeight.ExtraBold)
+    }
+},
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = TextDim) } }
     )
 }
