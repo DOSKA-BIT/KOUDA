@@ -14,15 +14,12 @@ import java.util.concurrent.TimeUnit
 
 object SourceQuery {
 
-    // ─── HTTP client compartido ───────────────────────────────────────────────
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(4, TimeUnit.SECONDS)
         .readTimeout(6, TimeUnit.SECONDS)
         .callTimeout(8, TimeUnit.SECONDS)
         .build()
 
-    // Poné tu Steam Web API key acá (gratis en steamcommunity.com/dev/apikey)
-    // Si la dejás vacía simplemente saltea ese fallback
     private const val STEAM_API_KEY = ""
 
     private val QUERY_INFO = byteArrayOf(
@@ -35,44 +32,44 @@ object SourceQuery {
 
     fun queryServer(address: String, getPlayers: Boolean = false): Pair<ServerInfo?, List<PlayerInfo>> {
         return try {
-            val parts = address.split(":")
+            val parts = address.trim().split(":")
             if (parts.size != 2) return null to emptyList()
-            val ip = parts[0]
-            val port = parts[1].toIntOrNull() ?: return null to emptyList()
+            val ip = parts[0].trim()
+            val port = parts[1].trim().toIntOrNull() ?: return null to emptyList()
 
             val addr = InetAddress.getByName(ip)
             val socket = DatagramSocket()
             socket.soTimeout = 2000
 
             // Tres mediciones para mayor precision
-val pingSamples = mutableListOf<Int>()
-var lastData = ByteArray(0)
+            val pingSamples = mutableListOf<Int>()
+            var lastData = ByteArray(0)
 
-repeat(3) {
-    try {
-        val t0 = System.currentTimeMillis()
-        socket.send(DatagramPacket(QUERY_INFO, QUERY_INFO.size, addr, port))
-        val buf = ByteArray(4096)
-        val resp = DatagramPacket(buf, buf.size)
-        socket.receive(resp)
-        pingSamples.add((System.currentTimeMillis() - t0).toInt())
-        if (lastData.isEmpty()) lastData = resp.data.copyOf(resp.length)
-    } catch (e: Exception) { }
-}
+            repeat(3) {
+                try {
+                    val t0 = System.currentTimeMillis()
+                    socket.send(DatagramPacket(QUERY_INFO, QUERY_INFO.size, addr, port))
+                    val buf = ByteArray(4096)
+                    val resp = DatagramPacket(buf, buf.size)
+                    socket.receive(resp)
+                    pingSamples.add((System.currentTimeMillis() - t0).toInt())
+                    if (lastData.isEmpty()) lastData = resp.data.copyOf(resp.length)
+                } catch (e: Exception) { }
+            }
 
-val ping = pingSamples.sorted().getOrElse(1) { pingSamples.firstOrNull() ?: 999 }
-val data = lastData
-val response = DatagramPacket(lastData, lastData.size)
+            // Si no respondio al query normal, intentar con challenge (TF2 y algunos CS)
+            if (lastData.isEmpty()) {
+                lastData = queryWithChallenge(socket, addr, port) ?: return null to emptyList()
+                pingSamples.add(999)
+            }
+
+            val ping = pingSamples.sorted().getOrElse(1) { pingSamples.firstOrNull() ?: 999 }
+            val data = lastData
 
             val info = parseInfoResponse(data, ip, address, ping)
             val country = fetchCountry(ip)
+            val playerList = if (getPlayers) fetchPlayersWithFallback(ip, port, addr, info?.folder ?: "") else emptyList()
             socket.close()
-
-            val playerList = if (getPlayers) {
-                fetchPlayersWithFallback(ip, port, addr, info?.folder ?: "")
-            } else {
-                emptyList()
-            }
 
             info?.copy(country = country) to playerList
         } catch (e: Exception) {
@@ -80,214 +77,44 @@ val response = DatagramPacket(lastData, lastData.size)
         }
     }
 
-    // ─── FALLBACK CHAIN ───────────────────────────────────────────────────────
+    // ─── CHALLENGE SUPPORT (TF2 y servidores modernos) ───────────────────────
 
-    private fun fetchPlayersWithFallback(
-        ip: String,
-        port: Int,
-        addr: InetAddress,
-        folder: String
-    ): List<PlayerInfo> {
-
-        // 1. Intento directo UDP (A2S_PLAYER) con 3 reintentos
-        log("Intentando A2S_PLAYER directo...")
-        val udpResult = queryPlayersWithRetry(addr, port)
-        if (udpResult.isNotEmpty()) {
-            log("A2S_PLAYER exitoso: ${udpResult.size} jugadores")
-            return udpResult
-        }
-
-        // 2. Gametracker scraping
-        log("A2S fallo, intentando Gametracker...")
-        val gtResult = fetchFromGametracker(ip, port)
-        if (gtResult.isNotEmpty()) {
-            log("Gametracker exitoso: ${gtResult.size} jugadores")
-            return gtResult
-        }
-
-        // 3. Steam Web API (solo si tenemos key y es un juego Steam)
-        if (STEAM_API_KEY.isNotEmpty()) {
-            val appId = folderToSteamAppId(folder)
-            if (appId != null) {
-                log("Gametracker fallo, intentando Steam API...")
-                val steamResult = fetchFromSteamApi(ip, port, appId)
-                if (steamResult.isNotEmpty()) {
-                    log("Steam API exitoso: ${steamResult.size} jugadores")
-                    return steamResult
-                }
-            }
-        }
-
-        log("Todos los metodos fallaron")
-        return emptyList()
-    }
-
-    // ─── MÉTODO 1: UDP DIRECTO ────────────────────────────────────────────────
-
-    private fun queryPlayersWithRetry(addr: InetAddress, port: Int): List<PlayerInfo> {
-        val timeouts = listOf(2000, 3000, 4000)
-        for (timeout in timeouts) {
-            val result = tryQueryPlayers(addr, port, timeout)
-            if (result.isNotEmpty()) return result
-        }
-        return emptyList()
-    }
-
-    private fun tryQueryPlayers(addr: InetAddress, port: Int, timeoutMs: Int): List<PlayerInfo> {
-        val socket = DatagramSocket()
+    private fun queryWithChallenge(socket: DatagramSocket, addr: InetAddress, port: Int): ByteArray? {
         return try {
-            socket.soTimeout = timeoutMs
+            socket.soTimeout = 3000
 
-            val challengeReq = byteArrayOf(
+            val challengeQuery = byteArrayOf(
                 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(),
-                0x55,
-                0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()
-            )
-            socket.send(DatagramPacket(challengeReq, challengeReq.size, addr, port))
+                0x54
+            ) + "Source Engine Query\u0000".toByteArray(Charsets.UTF_8) +
+            byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte())
+
+            socket.send(DatagramPacket(challengeQuery, challengeQuery.size, addr, port))
 
             val buf = ByteArray(4096)
             val resp = DatagramPacket(buf, buf.size)
             socket.receive(resp)
-            var data = resp.data.copyOf(resp.length)
+            val data = resp.data.copyOf(resp.length)
 
             if (data.size >= 9 && data[4] == 0x41.toByte()) {
                 val challengeNum = data.copyOfRange(5, 9)
-                val realReq = byteArrayOf(
-                    0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x55
-                ) + challengeNum
-                socket.send(DatagramPacket(realReq, realReq.size, addr, port))
+                val realQuery = byteArrayOf(
+                    0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(),
+                    0x54
+                ) + "Source Engine Query\u0000".toByteArray(Charsets.UTF_8) + challengeNum
+
+                socket.send(DatagramPacket(realQuery, realQuery.size, addr, port))
                 socket.receive(resp)
-                data = resp.data.copyOf(resp.length)
+                return resp.data.copyOf(resp.length)
             }
 
-            if (data.size < 6 || data[4] != 0x44.toByte()) return emptyList()
-
-            val players = mutableListOf<PlayerInfo>()
-            var ptr = 5
-            val numPlayers = data[ptr].toInt() and 0xFF
-            ptr++
-
-            repeat(numPlayers) {
-                if (ptr >= data.size) return@repeat
-                ptr++
-                val nameEnd = data.indexOf(0, ptr)
-                if (nameEnd == -1 || nameEnd + 8 > data.size) return@repeat
-                val pName = String(data, ptr, nameEnd - ptr, Charsets.UTF_8).trim()
-                val score = ByteBuffer.wrap(data, nameEnd + 1, 4)
-                    .order(ByteOrder.LITTLE_ENDIAN).int
-                ptr = nameEnd + 9
-                if (pName.isNotBlank()) players.add(PlayerInfo(pName, score))
-            }
-
-            players.sortedByDescending { it.score }
+            if (data.size > 4 && (data[4] == 0x49.toByte() || data[4] == 0x6D.toByte())) data else null
         } catch (e: Exception) {
-            emptyList()
-        } finally {
-            socket.close()
+            null
         }
     }
 
-    // ─── MÉTODO 2: GAMETRACKER ────────────────────────────────────────────────
-
-    private fun fetchFromGametracker(ip: String, port: Int): List<PlayerInfo> {
-        return try {
-            val url = "https://www.gametracker.com/server_info/$ip:$port/"
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", "Mozilla/5.0 (Android 13; Mobile)")
-                .build()
-
-            val body = httpClient.newCall(request).execute().body?.string() ?: return emptyList()
-
-            val players = mutableListOf<PlayerInfo>()
-
-            // Gametracker muestra jugadores en una tabla con clase "as_red2"/"as_red"
-            // Patron: <td class="as_red...">NOMBRE</td>...<td>SCORE</td>
-            val rowRegex = Regex(
-                """<tr[^>]*class="[^"]*player_row[^"]*"[^>]*>.*?<td[^>]*>(.*?)</td>.*?<td[^>]*>(\d+)</td>""",
-                RegexOption.DOT_MATCHES_ALL
-            )
-
-            rowRegex.findAll(body).forEach { match ->
-                val rawName = match.groupValues[1]
-                    .replace(Regex("<[^>]+>"), "")
-                    .trim()
-                val score = match.groupValues[2].toIntOrNull() ?: 0
-                if (rawName.isNotBlank() && rawName != "Player Name") {
-                    players.add(PlayerInfo(rawName, score))
-                }
-            }
-
-            // Si el regex anterior no matchea, intentar patron alternativo
-            if (players.isEmpty()) {
-                val altRegex = Regex("""alt_color.*?<td>(.*?)</td>.*?<td>(\d*)</td>""", RegexOption.DOT_MATCHES_ALL)
-                altRegex.findAll(body).forEach { match ->
-                    val rawName = match.groupValues[1]
-                        .replace(Regex("<[^>]+>"), "")
-                        .trim()
-                    val score = match.groupValues[2].toIntOrNull() ?: 0
-                    if (rawName.isNotBlank()) {
-                        players.add(PlayerInfo(rawName, score))
-                    }
-                }
-            }
-
-            players.sortedByDescending { it.score }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    // ─── MÉTODO 3: STEAM WEB API ──────────────────────────────────────────────
-
-    private fun fetchFromSteamApi(ip: String, port: Int, appId: Int): List<PlayerInfo> {
-        return try {
-            // Steam usa el puerto de query (port) para identificar el servidor
-            val url = "https://api.steampowered.com/IGameServersService/GetServerList/v1/" +
-                "?key=$STEAM_API_KEY&filter=appid\\$appId\\addr\\$ip:$port&limit=1"
-
-            val request = Request.Builder().url(url).build()
-            val body = httpClient.newCall(request).execute().body?.string() ?: return emptyList()
-            val json = JSONObject(body)
-
-            val servers = json
-                .optJSONObject("response")
-                ?.optJSONArray("servers") ?: return emptyList()
-
-            if (servers.length() == 0) return emptyList()
-
-            val server = servers.getJSONObject(0)
-            val playersRaw = server.optString("players", "")
-
-            // Steam API no da nombres individuales en este endpoint,
-            // pero podemos intentar con GetPlayerSummaries si tenemos SteamIDs
-            // Por ahora devolvemos placeholder con conteo
-            val playerCount = server.optInt("players", 0)
-            if (playerCount > 0) {
-                // Fallback de Steam: solo tenemos el conteo, no nombres
-                // Devolvemos lista vacía para que no falsee datos
-                emptyList()
-            } else {
-                emptyList()
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    // ─── HELPERS ─────────────────────────────────────────────────────────────
-
-    private fun folderToSteamAppId(folder: String): Int? = when (folder.lowercase()) {
-        "csgo", "cs2"    -> 730
-        "tf"             -> 440
-        "valve"          -> 70   // Half-Life
-        "cstrike"        -> null // CS 1.6 no es Steam Web API compatible para esto
-        else             -> null
-    }
-
-    private fun log(msg: String) {
-        android.util.Log.d("SourceQuery", msg)
-    }
+    // ─── PARSE INFO RESPONSE ─────────────────────────────────────────────────
 
     private fun parseInfoResponse(data: ByteArray, ip: String, address: String, ping: Int): ServerInfo? {
         return try {
@@ -351,6 +178,152 @@ val response = DatagramPacket(lastData, lastData.size)
         } catch (e: Exception) {
             null
         }
+    }
+
+    // ─── FALLBACK CHAIN PARA JUGADORES ───────────────────────────────────────
+
+    private fun fetchPlayersWithFallback(
+        ip: String,
+        port: Int,
+        addr: InetAddress,
+        folder: String
+    ): List<PlayerInfo> {
+        val udpResult = queryPlayersWithRetry(addr, port)
+        if (udpResult.isNotEmpty()) return udpResult
+
+        val gtResult = fetchFromGametracker(ip, port)
+        if (gtResult.isNotEmpty()) return gtResult
+
+        if (STEAM_API_KEY.isNotEmpty()) {
+            val appId = folderToSteamAppId(folder)
+            if (appId != null) {
+                val steamResult = fetchFromSteamApi(ip, port, appId)
+                if (steamResult.isNotEmpty()) return steamResult
+            }
+        }
+
+        return emptyList()
+    }
+
+    // ─── UDP DIRECTO ─────────────────────────────────────────────────────────
+
+    private fun queryPlayersWithRetry(addr: InetAddress, port: Int): List<PlayerInfo> {
+        val timeouts = listOf(2000, 3000, 4000)
+        for (timeout in timeouts) {
+            val result = tryQueryPlayers(addr, port, timeout)
+            if (result.isNotEmpty()) return result
+        }
+        return emptyList()
+    }
+
+    private fun tryQueryPlayers(addr: InetAddress, port: Int, timeoutMs: Int): List<PlayerInfo> {
+        val socket = DatagramSocket()
+        return try {
+            socket.soTimeout = timeoutMs
+            val challengeReq = byteArrayOf(
+                0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(),
+                0x55,
+                0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()
+            )
+            socket.send(DatagramPacket(challengeReq, challengeReq.size, addr, port))
+
+            val buf = ByteArray(4096)
+            val resp = DatagramPacket(buf, buf.size)
+            socket.receive(resp)
+            var data = resp.data.copyOf(resp.length)
+
+            if (data.size >= 9 && data[4] == 0x41.toByte()) {
+                val challengeNum = data.copyOfRange(5, 9)
+                val realReq = byteArrayOf(
+                    0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0x55
+                ) + challengeNum
+                socket.send(DatagramPacket(realReq, realReq.size, addr, port))
+                socket.receive(resp)
+                data = resp.data.copyOf(resp.length)
+            }
+
+            if (data.size < 6 || data[4] != 0x44.toByte()) return emptyList()
+
+            val players = mutableListOf<PlayerInfo>()
+            var ptr = 5
+            val numPlayers = data[ptr].toInt() and 0xFF
+            ptr++
+
+            repeat(numPlayers) {
+                if (ptr >= data.size) return@repeat
+                ptr++
+                val nameEnd = data.indexOf(0, ptr)
+                if (nameEnd == -1 || nameEnd + 8 > data.size) return@repeat
+                val pName = String(data, ptr, nameEnd - ptr, Charsets.UTF_8).trim()
+                val score = ByteBuffer.wrap(data, nameEnd + 1, 4)
+                    .order(ByteOrder.LITTLE_ENDIAN).int
+                ptr = nameEnd + 9
+                if (pName.isNotBlank()) players.add(PlayerInfo(pName, score))
+            }
+
+            players.sortedByDescending { it.score }
+        } catch (e: Exception) {
+            emptyList()
+        } finally {
+            socket.close()
+        }
+    }
+
+    // ─── GAMETRACKER ─────────────────────────────────────────────────────────
+
+    private fun fetchFromGametracker(ip: String, port: Int): List<PlayerInfo> {
+        return try {
+            val url = "https://www.gametracker.com/server_info/$ip:$port/"
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .build()
+
+            val body = httpClient.newCall(request).execute().body?.string() ?: return emptyList()
+            val players = mutableListOf<PlayerInfo>()
+
+            val rowRegex = Regex(
+                """<tr[^>]*class="[^"]*player_row[^"]*"[^>]*>.*?<td[^>]*>(.*?)</td>.*?<td[^>]*>(\d+)</td>""",
+                RegexOption.DOT_MATCHES_ALL
+            )
+            rowRegex.findAll(body).forEach { match ->
+                val rawName = match.groupValues[1].replace(Regex("<[^>]+>"), "").trim()
+                val score = match.groupValues[2].toIntOrNull() ?: 0
+                if (rawName.isNotBlank() && rawName != "Player Name") {
+                    players.add(PlayerInfo(rawName, score))
+                }
+            }
+
+            players.sortedByDescending { it.score }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    // ─── STEAM API ───────────────────────────────────────────────────────────
+
+    private fun fetchFromSteamApi(ip: String, port: Int, appId: Int): List<PlayerInfo> {
+        return try {
+            val url = "https://api.steampowered.com/IGameServersService/GetServerList/v1/" +
+                "?key=$STEAM_API_KEY&filter=appid\\$appId\\addr\\$ip:$port&limit=1"
+            val request = Request.Builder().url(url).build()
+            val body = httpClient.newCall(request).execute().body?.string() ?: return emptyList()
+            val json = JSONObject(body)
+            val servers = json.optJSONObject("response")?.optJSONArray("servers") ?: return emptyList()
+            if (servers.length() == 0) return emptyList()
+            emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    // ─── HELPERS ─────────────────────────────────────────────────────────────
+
+    private fun folderToSteamAppId(folder: String): Int? = when (folder.lowercase()) {
+        "csgo", "cs2" -> 730
+        "tf" -> 440
+        "valve" -> 70
+        else -> null
     }
 
     private fun fetchCountry(ip: String): String {
