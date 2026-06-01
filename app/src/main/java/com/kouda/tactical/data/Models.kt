@@ -15,7 +15,13 @@ data class ServerInfo(
     val players: String get() = "$curPlayers/$maxPlayers"
     val pingStr: String get() = "${ping}ms"
     val isFull: Boolean get() = maxPlayers > 0 && curPlayers >= maxPlayers
-    val fillRatio: Float get() = if (maxPlayers > 0) curPlayers.toFloat() / maxPlayers else 0f
+   val fillRatio: Float get() = if (maxPlayers > 0) curPlayers.toFloat() / maxPlayers else 0f
+   val isOffline: Boolean get() = ping == -1
+   val isLoading: Boolean get() = ping == -2
+   val pingStr: String get() = when {
+    ping == -2 -> "..."
+    ping == -1 -> "offline"
+    else -> "${ping}ms"
 }
 
 data class PlayerInfo(
