@@ -13,15 +13,15 @@ data class ServerInfo(
     var autoWatch: Boolean = false
 ) {
     val players: String get() = "$curPlayers/$maxPlayers"
-    val pingStr: String get() = "${ping}ms"
+    val pingStr: String get() = when {
+        ping == -2 -> "..."
+        ping == -1 -> "offline"
+        else -> "${ping}ms"
+    }
     val isFull: Boolean get() = maxPlayers > 0 && curPlayers >= maxPlayers
-   val fillRatio: Float get() = if (maxPlayers > 0) curPlayers.toFloat() / maxPlayers else 0f
-   val isOffline: Boolean get() = ping == -1
-   val isLoading: Boolean get() = ping == -2
-   val pingStr: String get() = when {
-    ping == -2 -> "..."
-    ping == -1 -> "offline"
-    else -> "${ping}ms"
+    val fillRatio: Float get() = if (maxPlayers > 0) curPlayers.toFloat() / maxPlayers else 0f
+    val isOffline: Boolean get() = ping == -1
+    val isLoading: Boolean get() = ping == -2
 }
 
 data class PlayerInfo(
@@ -29,19 +29,16 @@ data class PlayerInfo(
     val score: Int
 )
 
-// Un punto de datos en el tiempo para un servidor
 data class ServerSnapshot(
-    val timestamp: Long,      // System.currentTimeMillis()
+    val timestamp: Long,
     val players: Int,
     val maxPlayers: Int
 )
 
-// Historial completo de un servidor
 data class ServerHistory(
     val ip: String,
     val snapshots: List<ServerSnapshot> = emptyList()
 ) {
-    // Hora pico: la hora del dia (0-23) con mas jugadores en promedio
     fun peakHour(): Int? {
         if (snapshots.size < 3) return null
         val byHour = snapshots.groupBy {
@@ -54,7 +51,6 @@ data class ServerHistory(
         }?.key
     }
 
-    // Promedio de jugadores en las ultimas 24hs
     fun recentAverage(): Int {
         val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
         val recent = snapshots.filter { it.timestamp > cutoff }
@@ -62,7 +58,6 @@ data class ServerHistory(
         return recent.map { it.players }.average().toInt()
     }
 
-    // Cantidad de veces que se consulto
     fun totalChecks(): Int = snapshots.size
 }
 
