@@ -181,12 +181,38 @@ class KoudaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addServer(address: String) {
-        val servers = loadServers().toMutableList()
-        if (address !in servers) {
-            servers.add(address)
-            saveServers(servers)
-            refresh()
+    val servers = loadServers().toMutableList()
+    if (address in servers) return
+    servers.add(address)
+    saveServers(servers)
+
+    // Mostrar inmediatamente con estado "cargando"
+    val placeholder = ServerInfo(
+        name = address, map = "-",
+        curPlayers = 0, maxPlayers = 0,
+        ping = -2, ip = address,
+        country = "??", folder = "unknown"
+    )
+    _state.update { s -> s.copy(myServers = s.myServers + placeholder) }
+
+    // Consultar en background y actualizar el resultado
+    viewModelScope.launch(Dispatchers.IO) {
+        val favs = loadFavs()
+        val autoWatched = loadAutoWatch()
+        val (info, _) = SourceQuery.queryServer(address)
+        val result = info?.copy(
+            isFav = address in favs,
+            autoWatch = address in autoWatched
+        ) ?: ServerInfo(
+            name = address, map = "-",
+            curPlayers = 0, maxPlayers = 0,
+            ping = -1, ip = address,
+            country = "??", folder = "unknown"
+        )
+        _state.update { s ->
+            s.copy(myServers = s.myServers.map { if (it.ip == address) result else it })
         }
+      }
     }
 
     fun saveFromSearch(result: SearchResult) {
