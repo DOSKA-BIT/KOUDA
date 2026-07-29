@@ -16,13 +16,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class RobloxUiState(
-    val category: RobloxCategory = RobloxCategory.TOP_PLAYED,
-    val games: List<RobloxGame> = emptyList(),
+    val category: RobloxCategory = RobloxCategory.POPULAR,
+    val games: List<RobloxSearchResult> = emptyList(),
     val isLoadingGames: Boolean = false,
+    val exploreFailed: Boolean = false,
     val searchQuery: String = "",
     val searchResults: List<RobloxSearchResult> = emptyList(),
     val isSearching: Boolean = false,
-    val selectedGame: RobloxGame? = null
+    val selectedGame: RobloxGame? = null,
+    val addError: String? = null
 )
 
 class RobloxViewModel(application: Application) : AndroidViewModel(application) {
@@ -30,13 +32,13 @@ class RobloxViewModel(application: Application) : AndroidViewModel(application) 
     private val _state = MutableStateFlow(RobloxUiState())
     val state: StateFlow<RobloxUiState> = _state.asStateFlow()
 
-    init { loadCategory(RobloxCategory.TOP_PLAYED) }
+    init { loadCategory(RobloxCategory.POPULAR) }
 
     fun loadCategory(category: RobloxCategory) {
-        _state.update { it.copy(category = category, games = emptyList(), isLoadingGames = true) }
+        _state.update { it.copy(category = category, games = emptyList(), isLoadingGames = true, exploreFailed = false) }
         viewModelScope.launch(Dispatchers.IO) {
-            val games = RobloxApi.getTopGames(category)
-            _state.update { it.copy(games = games, isLoadingGames = false) }
+            val results = RobloxApi.searchGames(category.query)
+            _state.update { it.copy(games = results, isLoadingGames = false, exploreFailed = results.isEmpty()) }
         }
     }
 
@@ -47,8 +49,8 @@ class RobloxViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
-            delay(500) // debounce
-            if (_state.value.searchQuery != query) return@launch // cancelado
+            delay(500)
+            if (_state.value.searchQuery != query) return@launch
             _state.update { it.copy(isSearching = true) }
             val results = RobloxApi.searchGames(query)
             _state.update { it.copy(searchResults = results, isSearching = false) }
@@ -59,10 +61,18 @@ class RobloxViewModel(application: Application) : AndroidViewModel(application) 
 
     fun selectGame(game: RobloxGame?) = _state.update { it.copy(selectedGame = game) }
 
-    fun loadGameDetail(universeId: Long) {
+    fun addByInput(input: String) {
+        if (input.isBlank()) return
+        _state.update { it.copy(addError = null) }
         viewModelScope.launch(Dispatchers.IO) {
-            val detail = RobloxApi.getGameDetail(universeId) ?: return@launch
-            _state.update { it.copy(selectedGame = detail) }
+            val game = RobloxApi.resolveInput(input)
+            if (game == null) {
+                _state.update { it.copy(addError = "No se encontró ningún juego con ese dato") }
+            } else {
+                _state.update { it.copy(selectedGame = game, addError = null) }
+            }
         }
     }
+
+    fun clearAddError() = _state.update { it.copy(addError = null) }
 }
