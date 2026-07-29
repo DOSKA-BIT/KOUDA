@@ -1,16 +1,12 @@
 package com.kouda.tactical.network.roblox
 
-/**
- * Información de un juego/experiencia de Roblox.
- * Obtenida únicamente mediante APIs públicas oficiales de Roblox.
- */
 data class RobloxGame(
     val universeId: Long,
     val placeId: Long,
     val name: String,
     val description: String,
     val creator: String,
-    val creatorType: String,        // "User" o "Group"
+    val creatorType: String,
     val activePlayers: Int,
     val totalVisits: Long,
     val favoritedCount: Long,
@@ -18,35 +14,34 @@ data class RobloxGame(
     val genre: String,
     val thumbnailUrl: String?,
     val isPlayable: Boolean,
-    val created: String,            // fecha ISO
+    val created: String,
     val updated: String
 ) {
-    val formattedVisits: String get() = when {
-        totalVisits >= 1_000_000_000 -> "${totalVisits / 1_000_000_000}B"
-        totalVisits >= 1_000_000     -> "${totalVisits / 1_000_000}M"
-        totalVisits >= 1_000         -> "${totalVisits / 1_000}K"
-        else                         -> totalVisits.toString()
-    }
-    val formattedFavorites: String get() = when {
-        favoritedCount >= 1_000_000 -> "${favoritedCount / 1_000_000}M"
-        favoritedCount >= 1_000     -> "${favoritedCount / 1_000}K"
-        else                         -> favoritedCount.toString()
-    }
-    val activePlayersStr: String get() = when {
-        activePlayers >= 1_000 -> "${activePlayers / 1_000}K"
-        else                   -> activePlayers.toString()
+    val formattedVisits: String get() = compact(totalVisits)
+    val formattedFavorites: String get() = compact(favoritedCount)
+    val activePlayersStr: String get() = if (activePlayers >= 1000) "${activePlayers / 1000}K" else "$activePlayers"
+    val playUrl: String get() = "https://www.roblox.com/games/$placeId"
+
+    private fun compact(n: Long): String = when {
+        n >= 1_000_000_000 -> "${n / 1_000_000_000}B"
+        n >= 1_000_000     -> "${n / 1_000_000}M"
+        n >= 1_000         -> "${n / 1_000}K"
+        else               -> n.toString()
     }
 }
 
-/** Categorías de búsqueda en Roblox */
-enum class RobloxCategory(val label: String, val sortType: String) {
-    TOP_PLAYED("Más jugados",    "PlayerCount"),
-    TOP_RATED("Mejor valorados", "Favorites"),
-    NEW("Nuevos",               "RecentlyUpdated"),
-    FEATURED("Destacados",      "Featured")
+/**
+ * Categorías de exploración. No son el ranking interno de Roblox (ese endpoint
+ * ya no responde sin sesión) — son búsquedas por palabra clave contra omni-search,
+ * elegidas para cubrir los géneros más populares.
+ */
+enum class RobloxCategory(val label: String, val query: String) {
+    POPULAR("Populares", "obby"),
+    SIMULATORS("Simuladores", "simulator"),
+    ROLEPLAY("Roleplay", "roleplay"),
+    TYCOON("Tycoon", "tycoon")
 }
 
-/** Resultado de búsqueda por nombre */
 data class RobloxSearchResult(
     val universeId: Long,
     val placeId: Long,

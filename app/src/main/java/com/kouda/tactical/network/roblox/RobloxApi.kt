@@ -3,18 +3,15 @@ package com.kouda.tactical.network.roblox
 import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Cliente para las APIs públicas de Roblox.
- *
- * Endpoints utilizados (todos públicos, sin autenticación):
- * - games.roblox.com/v1/games  → info de universos
- * - games.roblox.com/v1/games/list → top games por categoría
- * - thumbnails.roblox.com       → imágenes de juegos
- * - apis.roblox.com/universes/  → búsqueda por nombre (vía catalog)
+ * games.roblox.com/v1/games/list (el que devuelve "top jugados" ordenado por
+ * el algoritmo interno de Roblox) dejó de responder sin sesión autenticada,
+ * así que no lo usamos más. Todo acá pasa por endpoints que siguen siendo
+ * públicos hoy: omni-search para descubrir juegos, y games/thumbnails/universes
+ * para los datos concretos de cada uno.
  */
 object RobloxApi {
 
@@ -23,100 +20,83 @@ object RobloxApi {
     private val http = OkHttpClient.Builder()
         .connectTimeout(6, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
-        .callTimeout(10, TimeUnit.SECONDS)
         .build()
 
-    // ─── TOP GAMES POR CATEGORÍA ─────────────────────────────────────────────
-
-    fun getTopGames(category: RobloxCategory, limit: Int = 20): List<RobloxGame> {
-        return try {
-            val url = "https://games.roblox.com/v1/games/list" +
-                "?sortToken=&gameSetType=${category.sortType}" +
-                "&startRows=0&maxRows=$limit"
-
-            val body = get(url) ?: return emptyList()
-            val json = JSONObject(body)
-            val games = json.optJSONArray("games") ?: return emptyList()
-
-            val universeIds = (0 until games.length()).map {
-                games.getJSONObject(it).getLong("universeId")
-            }
-
-            fetchGameDetails(universeIds)
-        } catch (e: Exception) {
-            Log.e(TAG, "getTopGames error: ${e.message}")
-            emptyList()
-        }
-    }
-
-    // ─── BÚSQUEDA POR NOMBRE ─────────────────────────────────────────────────
-
-    fun searchGames(query: String, limit: Int = 20): List<RobloxSearchResult> {
+    fun searchGames(query: String, limit: Int = 24): List<RobloxSearchResult> {
+        if (query.isBlank()) return emptyList()
         return try {
             val encoded = java.net.URLEncoder.encode(query, "UTF-8")
-            val url = "https://catalog.roblox.com/v1/search/items" +
-                "?category=Games&keyword=$encoded&limit=$limit"
+            val url = "https://apis.roblox.com/search-api/omni-search" +
+                "?searchQuery=$encoded&pageType=all"
 
             val body = get(url) ?: return emptyList()
-            val json = JSONObject(body)
-            val data = json.optJSONArray("data") ?: return emptyList()
+            val root = JSONObject(body)
+            val searches = root.optJSONArray("searchResults") ?: return emptyList()
 
-            // Endpoint de catalog da placeIds, necesitamos universeIds
-            val placeIds = (0 until data.length()).mapNotNull {
-                data.getJSONObject(it).optLong("id").takeIf { id -> id > 0 }
+            val universeIds = mutableListOf<Long>()
+            for (i in 0 until searches.length()) {
+                val group = searches.getJSONObject(i)
+                val contents = group.optJSONArray("contents") ?: continue
+                for (j in 0 until contents.length()) {
+                    val item = contents.getJSONObject(j)
+                    val uid = item.optLong("universeId", -1)
+                    if (uid > 0) universeIds.add(uid)
+                    if (universeIds.size >= limit) break
+                }
+                if (universeIds.size >= limit) break
             }
 
-            if (placeIds.isEmpty()) return emptyList()
+            if (universeIds.isEmpty()) return emptyList()
 
-            // Convertir placeIds a universeIds
-            val universeIds = placeIdsToUniverseIds(placeIds)
             val details = fetchGameDetails(universeIds)
-            val thumbnails = fetchThumbnails(universeIds)
-
-            details.map { game ->
-                RobloxSearchResult(
-                    universeId = game.universeId,
-                    placeId = game.placeId,
-                    name = game.name,
-                    thumbnailUrl = thumbnails[game.universeId],
-                    activePlayers = game.activePlayers,
-                    totalVisits = game.totalVisits
-                )
+            details.map {
+                RobloxSearchResult(it.universeId, it.placeId, it.name, it.thumbnailUrl, it.activePlayers, it.totalVisits)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "searchGames error: ${e.message}")
+            Log.e(TAG, "searchGames($query): ${e.message}")
             emptyList()
         }
     }
 
-    // ─── DETALLE DE UN JUEGO ─────────────────────────────────────────────────
+    fun getGameDetail(universeId: Long): RobloxGame? =
+        fetchGameDetails(listOf(universeId)).firstOrNull()
 
-    fun getGameDetail(universeId: Long): RobloxGame? {
-        return fetchGameDetails(listOf(universeId)).firstOrNull()
+    /** Acepta URL completa, placeId numérico o universeId numérico. */
+    fun resolveInput(input: String): RobloxGame? {
+        val trimmed = input.trim()
+
+        val placeIdFromUrl = Regex("roblox\\.com/games/(\\d+)").find(trimmed)?.groupValues?.get(1)?.toLongOrNull()
+        if (placeIdFromUrl != null) return placeIdToGame(placeIdFromUrl)
+
+        val asNumber = trimmed.toLongOrNull()
+        if (asNumber != null) {
+            // probamos como universeId primero, si no da nada lo tratamos como placeId
+            getGameDetail(asNumber)?.let { return it }
+            return placeIdToGame(asNumber)
+        }
+        return null
     }
 
-    // ─── PRIVADOS ────────────────────────────────────────────────────────────
+    private fun placeIdToGame(placeId: Long): RobloxGame? {
+        val universeId = placeIdsToUniverseIds(listOf(placeId)).firstOrNull() ?: return null
+        return getGameDetail(universeId)
+    }
 
     private fun fetchGameDetails(universeIds: List<Long>): List<RobloxGame> {
         if (universeIds.isEmpty()) return emptyList()
         return try {
             val ids = universeIds.joinToString(",")
-            val body = get("https://games.roblox.com/v1/games?universeIds=$ids")
-                ?: return emptyList()
-            val json = JSONObject(body)
-            val data = json.optJSONArray("data") ?: return emptyList()
-
+            val body = get("https://games.roblox.com/v1/games?universeIds=$ids") ?: return emptyList()
+            val data = JSONObject(body).optJSONArray("data") ?: return emptyList()
             val thumbnails = fetchThumbnails(universeIds)
 
-            (0 until data.length()).mapNotNull { i ->
-                try {
-                    parseGame(data.getJSONObject(i), thumbnails)
-                } catch (e: Exception) {
-                    null
+            buildList {
+                for (i in 0 until data.length()) {
+                    runCatching { parseGame(data.getJSONObject(i), thumbnails) }.getOrNull()?.let { add(it) }
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "fetchGameDetails error: ${e.message}")
+            Log.e(TAG, "fetchGameDetails: ${e.message}")
             emptyList()
         }
     }
@@ -127,7 +107,7 @@ object RobloxApi {
         return RobloxGame(
             universeId = universeId,
             placeId = obj.optLong("rootPlaceId", 0L),
-            name = obj.optString("name", "Unknown"),
+            name = obj.optString("name", "Sin nombre"),
             description = obj.optString("description", "").take(300),
             creator = creator?.optString("name", "—") ?: "—",
             creatorType = creator?.optString("type", "User") ?: "User",
@@ -137,7 +117,7 @@ object RobloxApi {
             maxPlayers = obj.optInt("maxPlayers", 0),
             genre = obj.optString("genre", "—"),
             thumbnailUrl = thumbnails[universeId],
-            isPlayable = obj.optBoolean("isPlayable", false),
+            isPlayable = obj.optBoolean("isPlayable", true),
             created = obj.optString("created", "").take(10),
             updated = obj.optString("updated", "").take(10)
         )
@@ -151,15 +131,14 @@ object RobloxApi {
                 "?universeIds=$ids&thumbnailType=GameThumbnail&format=Png&size=768x432"
             val body = get(url) ?: return emptyMap()
             val data = JSONObject(body).optJSONArray("data") ?: return emptyMap()
-            val result = mutableMapOf<Long, String?>()
-            for (i in 0 until data.length()) {
-                val item = data.getJSONObject(i)
-                val uid = item.getLong("universeId")
-                val thumbs = item.optJSONArray("thumbnails")
-                val imageUrl = thumbs?.optJSONObject(0)?.optString("imageUrl")
-                result[uid] = imageUrl
+            buildMap {
+                for (i in 0 until data.length()) {
+                    val item = data.getJSONObject(i)
+                    val uid = item.getLong("universeId")
+                    val imageUrl = item.optJSONArray("thumbnails")?.optJSONObject(0)?.optString("imageUrl")
+                    put(uid, imageUrl)
+                }
             }
-            result
         } catch (e: Exception) {
             emptyMap()
         }
@@ -168,12 +147,12 @@ object RobloxApi {
     private fun placeIdsToUniverseIds(placeIds: List<Long>): List<Long> {
         return try {
             val ids = placeIds.joinToString(",")
-            val body = get("https://apis.roblox.com/universes/v1/places?placeIds=$ids")
-                ?: return emptyList()
-            val data = JSONObject(body).optJSONArray("universeIdsByPlaceIds")
-                ?: return emptyList()
-            (0 until data.length()).mapNotNull {
-                data.optJSONObject(it)?.optLong("universeId")?.takeIf { id -> id > 0 }
+            val body = get("https://apis.roblox.com/universes/v1/places?placeIds=$ids") ?: return emptyList()
+            val data = JSONObject(body).optJSONArray("universeIdsByPlaceIds") ?: return emptyList()
+            buildList {
+                for (i in 0 until data.length()) {
+                    data.optJSONObject(i)?.optLong("universeId")?.takeIf { it > 0 }?.let { add(it) }
+                }
             }
         } catch (e: Exception) {
             emptyList()
@@ -182,15 +161,17 @@ object RobloxApi {
 
     private fun get(url: String): String? {
         return try {
-            val req = Request.Builder()
-                .url(url)
+            val req = Request.Builder().url(url)
                 .header("User-Agent", "Mozilla/5.0")
                 .header("Accept", "application/json")
                 .build()
             val resp = http.newCall(req).execute()
-            if (resp.isSuccessful) resp.body?.string() else null
+            if (resp.isSuccessful) resp.body?.string() else {
+                Log.w(TAG, "GET $url → ${resp.code}")
+                null
+            }
         } catch (e: Exception) {
-            Log.w(TAG, "GET $url → ${e.message}")
+            Log.w(TAG, "GET $url falló: ${e.message}")
             null
         }
     }
