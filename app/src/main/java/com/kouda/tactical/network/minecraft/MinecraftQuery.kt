@@ -19,169 +19,138 @@ object MinecraftQuery {
             Socket().use { socket ->
                 socket.soTimeout = TIMEOUT_MS
                 socket.connect(InetSocketAddress(ip, port), TIMEOUT_MS)
-
-                val out = DataOutputStream(socket.getOutputStream())
-                val input = DataInputStream(socket.getInputStream())
-
-                sendHandshake(out, ip, port)
-                sendStatusRequest(out)
-
-                val pingStart = System.currentTimeMillis()
-                val jsonStr = readStatusResponse(input)
-                val ping = (System.currentTimeMillis() - pingStart).toInt()
-
+                val out = DataInputStream(socket.getInputStream())
+                val inp = DataOutputStream(socket.getOutputStream())
+                sendHandshake(inp, ip, port)
+                sendStatusRequest(inp)
+                val t0 = System.currentTimeMillis()
+                val json = readStatusResponse(out)
                 val realPing = try {
-                    val t = System.currentTimeMillis()
-                    sendPingPacket(out, t)
-                    readPongPacket(input)
-                    (System.currentTimeMillis() - t).toInt()
-                } catch (e: Exception) { ping }
-
-                parseStatusJson(jsonStr, ip, port, realPing)
+                    val t1 = System.currentTimeMillis()
+                    sendPingPacket(inp, t1)
+                    readPongPacket(out)
+                    (System.currentTimeMillis() - t1).toInt()
+                } catch (e: Exception) { (System.currentTimeMillis() - t0).toInt() }
+                parseJson(json, ip, port, realPing)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed $ip:$port → ${e.message}")
-            MinecraftServerInfo(
-                ip = ip, port = port, name = ip, motdRaw = "",
-                version = "—", protocolVersion = -1,
-                curPlayers = 0, maxPlayers = 0, ping = -1,
-                faviconBase64 = null, modType = null,
-                mods = emptyList(), isOnline = false
-            )
+            Log.w(TAG, "Failed $ip:$port — ${e.message}")
+            offline(ip, port)
         }
     }
 
-    // ─── PACKET BUILDERS ─────────────────────────────────────────────────────
+    private fun offline(ip: String, port: Int) = MinecraftServerInfo(
+        ip = ip, port = port,
+        name = if (port == 25565) ip else "$ip:$port",
+        motdRaw = "", version = "—", protocolVersion = -1,
+        curPlayers = 0, maxPlayers = 0, ping = -1,
+        faviconBase64 = null, modType = null,
+        mods = emptyList(), playerSample = emptyList(), isOnline = false
+    )
 
     private fun sendHandshake(out: DataOutputStream, ip: String, port: Int) {
         val ipBytes = ip.toByteArray(Charsets.UTF_8)
         val payload = ByteArrayOutputStream().apply {
-            writeVarIntTo(this, 0x00)
-            writeVarIntTo(this, PROTOCOL_VERSION)
-            writeVarIntTo(this, ipBytes.size)
+            writeVarInt(0x00)
+            writeVarInt(PROTOCOL_VERSION)
+            writeVarInt(ipBytes.size)
             write(ipBytes)
-            // Puerto como big-endian short
             write((port ushr 8) and 0xFF)
             write(port and 0xFF)
-            writeVarIntTo(this, 1)
+            writeVarInt(1)
         }.toByteArray()
         writeFramed(out, payload)
     }
 
-    private fun sendStatusRequest(out: DataOutputStream) {
-        val payload = ByteArrayOutputStream().apply {
-            writeVarIntTo(this, 0x00)
-        }.toByteArray()
-        writeFramed(out, payload)
-    }
+    private fun sendStatusRequest(out: DataOutputStream) =
+        writeFramed(out, ByteArrayOutputStream().apply { writeVarInt(0x00) }.toByteArray())
 
     private fun sendPingPacket(out: DataOutputStream, timestamp: Long) {
         val payload = ByteArrayOutputStream().apply {
-            writeVarIntTo(this, 0x01)
-            // Long como 8 bytes big-endian
+            writeVarInt(0x01)
             for (i in 7 downTo 0) write(((timestamp ushr (i * 8)) and 0xFF).toInt())
         }.toByteArray()
         writeFramed(out, payload)
     }
 
     private fun readPongPacket(input: DataInputStream) {
-        readVarInt(input) // length
-        readVarInt(input) // packet id
-        repeat(8) { input.read() } // timestamp (8 bytes)
+        readVarInt(input); readVarInt(input); repeat(8) { input.read() }
     }
 
     private fun writeFramed(out: DataOutputStream, payload: ByteArray) {
-        val lenBytes = encodeVarInt(payload.size)
-        out.write(lenBytes)
-        out.write(payload)
-        out.flush()
+        out.write(encodeVarInt(payload.size)); out.write(payload); out.flush()
     }
 
-    // ─── STATUS RESPONSE ─────────────────────────────────────────────────────
-
     private fun readStatusResponse(input: DataInputStream): String {
-        readVarInt(input) // total length
-        val packetId = readVarInt(input)
-        if (packetId != 0x00) error("Unexpected packet ID: $packetId")
-        val strLen = readVarInt(input)
-        val bytes = ByteArray(strLen)
+        readVarInt(input)
+        val id = readVarInt(input)
+        if (id != 0x00) error("Unexpected packet id: $id")
+        val len = readVarInt(input)
+        val buf = ByteArray(len)
         var read = 0
-        while (read < strLen) {
-            val n = input.read(bytes, read, strLen - read)
+        while (read < len) {
+            val n = input.read(buf, read, len - read)
             if (n < 0) error("Stream ended")
             read += n
         }
-        return String(bytes, Charsets.UTF_8)
+        return String(buf, Charsets.UTF_8)
     }
 
-    // ─── JSON PARSER ─────────────────────────────────────────────────────────
-
-    private fun parseStatusJson(jsonStr: String, ip: String, port: Int, ping: Int): MinecraftServerInfo {
-        val json = JSONObject(jsonStr)
+    private fun parseJson(raw: String, ip: String, port: Int, ping: Int): MinecraftServerInfo {
+        val json = JSONObject(raw)
 
         val versionObj = json.optJSONObject("version")
-        val versionName = versionObj?.optString("name", "—") ?: "—"
-        val protocolVer = versionObj?.optInt("protocol", -1) ?: -1
+        val version = versionObj?.optString("name", "—") ?: "—"
+        val protocol = versionObj?.optInt("protocol", -1) ?: -1
 
         val playersObj = json.optJSONObject("players")
         val curPlayers = playersObj?.optInt("online", 0) ?: 0
         val maxPlayers = playersObj?.optInt("max", 0) ?: 0
 
-        val rawMotd = when {
-            json.has("description") -> {
-                val desc = json.get("description")
-                if (desc is JSONObject) extractText(desc) else desc.toString()
+        val playerSample = buildList {
+            playersObj?.optJSONArray("sample")?.let { sample ->
+                for (i in 0 until sample.length()) {
+                    val name = sample.optJSONObject(i)?.optString("name") ?: continue
+                    if (name.isNotBlank() && !name.startsWith("§")) add(name)
+                }
             }
-            else -> ""
         }
+
+        val rawMotd = if (json.has("description")) {
+            val d = json.get("description")
+            if (d is JSONObject) extractText(d) else d.toString()
+        } else ""
 
         val (modType, mods) = extractMods(json)
 
         return MinecraftServerInfo(
             ip = ip, port = port,
-            name = stripFormatting(rawMotd).trim().ifBlank { ip },
-            motdRaw = rawMotd,
-            version = versionName,
-            protocolVersion = protocolVer,
-            curPlayers = curPlayers,
-            maxPlayers = maxPlayers,
-            ping = ping,
+            name = strip(rawMotd).trim().ifBlank { if (port == 25565) ip else "$ip:$port" },
+            motdRaw = rawMotd, version = version, protocolVersion = protocol,
+            curPlayers = curPlayers, maxPlayers = maxPlayers, ping = ping,
             faviconBase64 = json.optString("favicon", null),
-            modType = modType,
-            mods = mods,
-            isOnline = true
+            modType = modType, mods = mods, playerSample = playerSample, isOnline = true
         )
     }
 
-    private fun extractText(obj: JSONObject): String {
-        val sb = StringBuilder()
-        if (obj.has("text")) sb.append(obj.getString("text"))
-        if (obj.has("extra")) {
-            val extra = obj.getJSONArray("extra")
-            for (i in 0 until extra.length()) {
-                val item = extra.get(i)
-                if (item is JSONObject) sb.append(extractText(item))
-                else sb.append(item.toString())
-            }
-        }
-        return sb.toString()
+    private fun extractText(obj: JSONObject): String = buildString {
+        if (obj.has("text")) append(obj.getString("text"))
+        obj.optJSONArray("extra")?.let { for (i in 0 until it.length()) {
+            val item = it.get(i)
+            append(if (item is JSONObject) extractText(item) else item.toString())
+        }}
     }
 
-    private fun stripFormatting(text: String): String =
-        text.replace(Regex("§[0-9a-fk-orA-FK-OR]"), "")
+    private fun strip(s: String) = s.replace(Regex("§[0-9a-fk-orA-FK-OR]"), "")
 
     private fun extractMods(json: JSONObject): Pair<String?, List<MinecraftMod>> {
-        val forgeData = json.optJSONObject("forgeData") ?: json.optJSONObject("modinfo")
-        if (forgeData != null) {
-            val modList = forgeData.optJSONArray("modList") ?: forgeData.optJSONArray("mods")
-            val mods = mutableListOf<MinecraftMod>()
-            if (modList != null) {
-                for (i in 0 until minOf(modList.length(), 50)) {
-                    val mod = modList.getJSONObject(i)
-                    mods.add(MinecraftMod(
-                        modId = mod.optString("modid", mod.optString("modId", "")),
-                        version = mod.optString("version", "")
-                    ))
+        val forge = json.optJSONObject("forgeData") ?: json.optJSONObject("modinfo")
+        if (forge != null) {
+            val arr = forge.optJSONArray("modList") ?: forge.optJSONArray("mods")
+            val mods = buildList {
+                if (arr != null) for (i in 0 until minOf(arr.length(), 100)) {
+                    val m = arr.getJSONObject(i)
+                    add(MinecraftMod(m.optString("modid", m.optString("modId", "")), m.optString("version", "")))
                 }
             }
             return "FORGE" to mods
@@ -190,32 +159,27 @@ object MinecraftQuery {
         return null to emptyList()
     }
 
-    // ─── VARINT ──────────────────────────────────────────────────────────────
-
     private fun encodeVarInt(value: Int): ByteArray {
         var v = value
-        val buf = mutableListOf<Byte>()
-        do {
-            var temp = (v and 0x7F).toByte()
-            v = v ushr 7
-            if (v != 0) temp = (temp.toInt() or 0x80).toByte()
-            buf.add(temp)
-        } while (v != 0)
-        return buf.toByteArray()
+        return buildList<Byte> {
+            do {
+                var b = (v and 0x7F).toByte()
+                v = v ushr 7
+                if (v != 0) b = (b.toInt() or 0x80).toByte()
+                add(b)
+            } while (v != 0)
+        }.toByteArray()
     }
 
-    private fun writeVarIntTo(out: ByteArrayOutputStream, value: Int) {
-        out.write(encodeVarInt(value))
-    }
+    private fun ByteArrayOutputStream.writeVarInt(value: Int) = write(encodeVarInt(value))
 
     private fun readVarInt(input: DataInputStream): Int {
-        var result = 0; var shift = 0; var b: Int
-        do {
-            b = input.read()
-            if (b == -1) error("Stream ended reading VarInt")
+        var result = 0; var shift = 0
+        while (true) {
+            val b = input.read().also { if (it == -1) error("Stream ended") }
             result = result or ((b and 0x7F) shl shift)
+            if (b and 0x80 == 0) return result
             shift += 7
-        } while (b and 0x80 != 0)
-        return result
+        }
     }
 }
